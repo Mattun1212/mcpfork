@@ -50,9 +50,10 @@ class TestInlineCommentsMixin:
                     },
                     "pageId": "67890",
                     "resolutionStatus": "open",
-                    "properties": {
-                        "inlineMarkerRef": "marker123",
-                        "inlineOriginalSelection": "selected text"
+                    "inlineCommentProperties": {
+                        "textSelection": "selected text",
+                        "textSelectionMatchCount": 1,
+                        "textSelectionMatchIndex": 0
                     }
                 }
             ]
@@ -87,8 +88,9 @@ class TestInlineCommentsMixin:
             assert result[0].body == "This is an inline comment"
             assert result[0].page_id == "67890"
             assert result[0].resolution_status == "open"
-            assert result[0].inline_marker_ref == "marker123"
-            assert result[0].inline_original_selection == "selected text"
+            assert result[0].text_selection == "selected text"
+            assert result[0].text_selection_match_count == 1
+            assert result[0].text_selection_match_index == 0
 
     def test_get_inline_comments_with_html_return(self, comments_mixin, mock_inline_comment_response):
         """Test retrieval of inline comments with HTML format."""
@@ -178,9 +180,10 @@ class TestInlineCommentsMixin:
             },
             "pageId": "67890",
             "resolutionStatus": "open",
-            "properties": {
-                "inlineMarkerRef": "new_marker",
-                "inlineOriginalSelection": "new selection"
+            "inlineCommentProperties": {
+                "textSelection": "new selection",
+                "textSelectionMatchCount": 1,
+                "textSelectionMatchIndex": 0
             }
         }
 
@@ -203,8 +206,9 @@ class TestInlineCommentsMixin:
             assert result.id == "54321"
             assert result.body == "This is a new inline comment"
             assert result.page_id == "67890"
-            assert result.inline_marker_ref == "new_marker"
-            assert result.inline_original_selection == "new selection"
+            assert result.text_selection == "new selection"
+            assert result.text_selection_match_count == 1
+            assert result.text_selection_match_index == 0
 
     def test_add_inline_comment_network_error(self, comments_mixin):
         """Test handling of network errors when adding inline comment."""
@@ -303,3 +307,4 @@ class TestInlineCommentsMixin:
             call_args = mock_post.call_args
             request_body = call_args[1]['json']
             assert request_body['body']['storage']['value'] == "<p>HTML content</p>"
+            assert request_body['inlineCommentProperties']['textSelection'] == "selection"

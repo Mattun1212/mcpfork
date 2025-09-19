@@ -47,8 +47,9 @@ class ConfluenceInlineComment(ApiModel, TimestampMixin):
     page_id: str | None = None
     blog_post_id: str | None = None
     resolution_status: str = "open"  # "open", "resolved"
-    inline_marker_ref: str | None = None
-    inline_original_selection: str | None = None
+    text_selection: str | None = None
+    text_selection_match_count: int = 1
+    text_selection_match_index: int = 0
 
     @classmethod
     def from_api_response(
@@ -81,9 +82,10 @@ class ConfluenceInlineComment(ApiModel, TimestampMixin):
             title = container.get("title")
 
         # Extract inline comment specific properties
-        properties = data.get("properties", {})
-        inline_marker_ref = properties.get("inlineMarkerRef") or properties.get("inline-marker-ref")
-        inline_original_selection = properties.get("inlineOriginalSelection") or properties.get("inline-original-selection")
+        properties = data.get("inlineCommentProperties", {}) or data.get("properties", {})
+        text_selection = properties.get("textSelection")
+        text_selection_match_count = properties.get("textSelectionMatchCount", 1)
+        text_selection_match_index = properties.get("textSelectionMatchIndex", 0)
 
         # Try to get body content from different formats
         body_content = EMPTY_STRING
@@ -106,8 +108,9 @@ class ConfluenceInlineComment(ApiModel, TimestampMixin):
             page_id=data.get("pageId"),
             blog_post_id=data.get("blogPostId"),
             resolution_status=data.get("resolutionStatus", "open"),
-            inline_marker_ref=inline_marker_ref,
-            inline_original_selection=inline_original_selection,
+            text_selection=text_selection,
+            text_selection_match_count=text_selection_match_count,
+            text_selection_match_index=text_selection_match_index,
         )
 
     def to_simplified_dict(self) -> dict[str, Any]:
@@ -132,11 +135,11 @@ class ConfluenceInlineComment(ApiModel, TimestampMixin):
         if self.blog_post_id:
             result["blog_post_id"] = self.blog_post_id
 
-        if self.inline_marker_ref:
-            result["inline_marker_ref"] = self.inline_marker_ref
+        if self.text_selection:
+            result["text_selection"] = self.text_selection
 
-        if self.inline_original_selection:
-            result["inline_original_selection"] = self.inline_original_selection
+        result["text_selection_match_count"] = self.text_selection_match_count
+        result["text_selection_match_index"] = self.text_selection_match_index
 
         return result
 
