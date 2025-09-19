@@ -774,6 +774,162 @@ async def add_inline_comment(
 
 
 @confluence_mcp.tool(tags={"confluence", "read"})
+async def get_inline_comment_by_id(
+    ctx: Context,
+    comment_id: Annotated[
+        str, Field(description="The ID of the inline comment to retrieve")
+    ],
+) -> str:
+    """Get a specific inline comment by its ID.
+
+    Args:
+        ctx: The FastMCP context.
+        comment_id: The ID of the inline comment to retrieve.
+
+    Returns:
+        JSON string representing the inline comment object.
+
+    Raises:
+        ValueError: If Confluence client is unavailable.
+    """
+    confluence_fetcher = await get_confluence_fetcher(ctx)
+    try:
+        inline_comment = confluence_fetcher.get_inline_comment_by_id(comment_id)
+        if inline_comment:
+            comment_data = inline_comment.to_simplified_dict()
+            response = {
+                "success": True,
+                "inline_comment": comment_data,
+            }
+        else:
+            response = {
+                "success": False,
+                "message": f"Inline comment {comment_id} not found.",
+            }
+    except Exception as e:
+        logger.error(f"Error getting inline comment {comment_id}: {str(e)}")
+        response = {
+            "success": False,
+            "message": f"Error getting inline comment {comment_id}",
+            "error": str(e),
+        }
+
+    return json.dumps(response, indent=2, ensure_ascii=False)
+
+
+@confluence_mcp.tool(tags={"confluence", "write"})
+@check_write_access
+async def update_inline_comment(
+    ctx: Context,
+    comment_id: Annotated[
+        str, Field(description="The ID of the inline comment to update")
+    ],
+    content: Annotated[
+        str, Field(description="The new content of the comment in Markdown format")
+    ],
+    version_number: Annotated[
+        int, Field(description="Current version number (required for optimistic locking)")
+    ],
+    version_message: Annotated[
+        str, Field(description="Optional message for this version")
+    ] = "",
+    resolved: Annotated[
+        bool, Field(description="Whether to mark the comment as resolved")
+    ] = False,
+) -> str:
+    """Update an existing inline comment on a Confluence page.
+
+    Args:
+        ctx: The FastMCP context.
+        comment_id: The ID of the inline comment to update.
+        content: The new content of the comment in Markdown format.
+        version_number: Current version number (required for optimistic locking).
+        version_message: Optional message for this version.
+        resolved: Whether to mark the comment as resolved.
+
+    Returns:
+        JSON string representing the updated inline comment object.
+
+    Raises:
+        ValueError: If in read-only mode or Confluence client is unavailable.
+    """
+    confluence_fetcher = await get_confluence_fetcher(ctx)
+    try:
+        inline_comment = confluence_fetcher.update_inline_comment(
+            comment_id=comment_id,
+            content=content,
+            version_number=version_number,
+            version_message=version_message,
+            resolved=resolved
+        )
+        if inline_comment:
+            comment_data = inline_comment.to_simplified_dict()
+            response = {
+                "success": True,
+                "message": "Inline comment updated successfully",
+                "inline_comment": comment_data,
+            }
+        else:
+            response = {
+                "success": False,
+                "message": f"Unable to update inline comment {comment_id}. API request completed but inline comment update unsuccessful.",
+            }
+    except Exception as e:
+        logger.error(f"Error updating inline comment {comment_id}: {str(e)}")
+        response = {
+            "success": False,
+            "message": f"Error updating inline comment {comment_id}",
+            "error": str(e),
+        }
+
+    return json.dumps(response, indent=2, ensure_ascii=False)
+
+
+@confluence_mcp.tool(tags={"confluence", "write"})
+@check_write_access
+async def delete_inline_comment(
+    ctx: Context,
+    comment_id: Annotated[
+        str, Field(description="The ID of the inline comment to delete")
+    ],
+) -> str:
+    """Delete an inline comment from a Confluence page.
+
+    Args:
+        ctx: The FastMCP context.
+        comment_id: The ID of the inline comment to delete.
+
+    Returns:
+        JSON string indicating success or failure.
+
+    Raises:
+        ValueError: If in read-only mode or Confluence client is unavailable.
+    """
+    confluence_fetcher = await get_confluence_fetcher(ctx)
+    try:
+        success = confluence_fetcher.delete_inline_comment(comment_id)
+        if success:
+            response = {
+                "success": True,
+                "message": f"Inline comment {comment_id} deleted successfully",
+            }
+        else:
+            response = {
+                "success": False,
+                "message": f"Unable to delete inline comment {comment_id}",
+            }
+    except Exception as e:
+        logger.error(f"Error deleting inline comment {comment_id}: {str(e)}")
+        response = {
+            "success": False,
+            "message": f"Error deleting inline comment {comment_id}",
+            "error": str(e),
+        }
+
+    return json.dumps(response, indent=2, ensure_ascii=False)
+
+
+@confluence_mcp.tool(tags={"confluence", "read"})
 async def search_user(
     ctx: Context,
     query: Annotated[

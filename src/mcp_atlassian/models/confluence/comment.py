@@ -66,6 +66,7 @@ class ConfluenceInlineComment(ApiModel, TimestampMixin):
     version_message: str | None = None
     version_minor_edit: bool = False
     version_author_id: str | None = None
+    version_created_at: str | None = None
 
     @classmethod
     def from_api_response(
@@ -116,6 +117,11 @@ class ConfluenceInlineComment(ApiModel, TimestampMixin):
         version_message = version_data.get("message")
         version_minor_edit = version_data.get("minorEdit", False)
         version_author_id = version_data.get("authorId")
+        version_created_at = version_data.get("createdAt")
+
+        # Use version.createdAt for created timestamp if available, fallback to direct created
+        created_timestamp = version_created_at or data.get("created", EMPTY_STRING)
+        updated_timestamp = data.get("updated", created_timestamp)
 
         # Try to get body content from different formats
         body_content = EMPTY_STRING
@@ -132,8 +138,8 @@ class ConfluenceInlineComment(ApiModel, TimestampMixin):
             status=data.get("status", "current"),
             title=title,
             body=body_content,
-            created=data.get("created", EMPTY_STRING),
-            updated=data.get("updated", EMPTY_STRING),
+            created=created_timestamp,
+            updated=updated_timestamp,
             author=author,
             type=data.get("type", "comment"),
             page_id=data.get("pageId"),
@@ -151,6 +157,7 @@ class ConfluenceInlineComment(ApiModel, TimestampMixin):
             version_message=version_message,
             version_minor_edit=version_minor_edit,
             version_author_id=version_author_id,
+            version_created_at=version_created_at,
         )
 
     def to_simplified_dict(self) -> dict[str, Any]:
@@ -211,6 +218,9 @@ class ConfluenceInlineComment(ApiModel, TimestampMixin):
 
         if self.version_author_id:
             result["version_author_id"] = self.version_author_id
+
+        if self.version_created_at:
+            result["version_created_at"] = self.version_created_at
 
         return result
 
