@@ -194,8 +194,7 @@ class TestInlineCommentsMixin:
             result = comments_mixin.add_inline_comment(
                 page_id="67890",
                 content="This is a new inline comment",
-                inline_marker_ref="new_marker",
-                inline_original_selection="new selection"
+                text_selection="new selection"
             )
 
             # Verify results
@@ -226,8 +225,7 @@ class TestInlineCommentsMixin:
             result = comments_mixin.add_inline_comment(
                 page_id="67890",
                 content="This is a new inline comment",
-                inline_marker_ref="new_marker",
-                inline_original_selection="new selection"
+                text_selection="new selection"
             )
 
             # Should return None on error
@@ -255,8 +253,7 @@ class TestInlineCommentsMixin:
             result = comments_mixin.add_inline_comment(
                 page_id="67890",
                 content="This is a new inline comment",
-                inline_marker_ref="new_marker",
-                inline_original_selection="new selection"
+                text_selection="new selection"
             )
 
             # Should return None on empty response
@@ -295,8 +292,7 @@ class TestInlineCommentsMixin:
             result = comments_mixin.add_inline_comment(
                 page_id="67890",
                 content="<p>HTML content</p>",
-                inline_marker_ref="marker",
-                inline_original_selection="selection"
+                text_selection="selection"
             )
 
             # Should not call markdown conversion

@@ -254,8 +254,9 @@ class CommentsMixin(ConfluenceClient):
         self,
         page_id: str,
         content: str,
-        inline_marker_ref: str,
-        inline_original_selection: str
+        text_selection: str,
+        text_selection_match_count: int = 1,
+        text_selection_match_index: int = 0
     ) -> ConfluenceInlineComment | None:
         """
         Add an inline comment to a Confluence page.
@@ -263,8 +264,9 @@ class CommentsMixin(ConfluenceClient):
         Args:
             page_id: The ID of the page to add the inline comment to
             content: The content of the comment (in markdown format)
-            inline_marker_ref: Reference marker for the inline comment position
-            inline_original_selection: Original text selection for the inline comment
+            text_selection: The text that was selected for the inline comment
+            text_selection_match_count: How many matches of the text exist (default: 1)
+            text_selection_match_index: Which match to target (0-based, default: 0)
 
         Returns:
             ConfluenceInlineComment object if comment was added successfully, None otherwise
@@ -288,7 +290,7 @@ class CommentsMixin(ConfluenceClient):
                 base_url += '/'
             inline_comments_url = urljoin(base_url, "wiki/api/v2/inline-comments")
 
-            # Prepare the request body
+            # Prepare the request body according to Confluence API specification
             request_body = {
                 "pageId": page_id,
                 "body": {
@@ -298,8 +300,9 @@ class CommentsMixin(ConfluenceClient):
                     }
                 },
                 "inlineCommentProperties": {
-                    "inlineMarkerRef": inline_marker_ref,
-                    "inlineOriginalSelection": inline_original_selection
+                    "textSelection": text_selection,
+                    "textSelectionMatchCount": text_selection_match_count,
+                    "textSelectionMatchIndex": text_selection_match_index
                 }
             }
 

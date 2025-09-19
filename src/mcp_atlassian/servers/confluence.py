@@ -715,12 +715,15 @@ async def add_inline_comment(
     content: Annotated[
         str, Field(description="The inline comment content in Markdown format")
     ],
-    inline_marker_ref: Annotated[
-        str, Field(description="Reference marker for the inline comment position")
+    text_selection: Annotated[
+        str, Field(description="The text that was selected for the inline comment")
     ],
-    inline_original_selection: Annotated[
-        str, Field(description="Original text selection for the inline comment")
-    ],
+    text_selection_match_count: Annotated[
+        int, Field(description="How many matches of the text exist (default: 1)", ge=1)
+    ] = 1,
+    text_selection_match_index: Annotated[
+        int, Field(description="Which match to target (0-based, default: 0)", ge=0)
+    ] = 0,
 ) -> str:
     """Add an inline comment to a Confluence page.
 
@@ -728,8 +731,9 @@ async def add_inline_comment(
         ctx: The FastMCP context.
         page_id: The ID of the page to add an inline comment to.
         content: The inline comment content in Markdown format.
-        inline_marker_ref: Reference marker for the inline comment position.
-        inline_original_selection: Original text selection for the inline comment.
+        text_selection: The text that was selected for the inline comment.
+        text_selection_match_count: How many matches of the text exist (default: 1).
+        text_selection_match_index: Which match to target (0-based, default: 0).
 
     Returns:
         JSON string representing the created inline comment.
@@ -742,8 +746,9 @@ async def add_inline_comment(
         inline_comment = confluence_fetcher.add_inline_comment(
             page_id=page_id,
             content=content,
-            inline_marker_ref=inline_marker_ref,
-            inline_original_selection=inline_original_selection
+            text_selection=text_selection,
+            text_selection_match_count=text_selection_match_count,
+            text_selection_match_index=text_selection_match_index
         )
         if inline_comment:
             comment_data = inline_comment.to_simplified_dict()
