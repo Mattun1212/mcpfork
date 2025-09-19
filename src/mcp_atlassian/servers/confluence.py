@@ -719,11 +719,14 @@ async def add_inline_comment(
         str, Field(description="The text that was selected for the inline comment")
     ],
     text_selection_match_count: Annotated[
-        int, Field(description="How many matches of the text exist (default: 1)", ge=1)
-    ] = 1,
+        int | None, Field(description="How many matches of the text exist (if None, will be auto-detected)", ge=1)
+    ] = None,
     text_selection_match_index: Annotated[
         int, Field(description="Which match to target (0-based, default: 0)", ge=0)
     ] = 0,
+    auto_detect_matches: Annotated[
+        bool, Field(description="Whether to automatically detect the number of matches (default: True)")
+    ] = True,
 ) -> str:
     """Add an inline comment to a Confluence page.
 
@@ -732,8 +735,9 @@ async def add_inline_comment(
         page_id: The ID of the page to add an inline comment to.
         content: The inline comment content in Markdown format.
         text_selection: The text that was selected for the inline comment.
-        text_selection_match_count: How many matches of the text exist (default: 1).
+        text_selection_match_count: How many matches of the text exist (if None, will be auto-detected).
         text_selection_match_index: Which match to target (0-based, default: 0).
+        auto_detect_matches: Whether to automatically detect the number of matches (default: True).
 
     Returns:
         JSON string representing the created inline comment.
@@ -748,7 +752,8 @@ async def add_inline_comment(
             content=content,
             text_selection=text_selection,
             text_selection_match_count=text_selection_match_count,
-            text_selection_match_index=text_selection_match_index
+            text_selection_match_index=text_selection_match_index,
+            auto_detect_matches=auto_detect_matches
         )
         if inline_comment:
             comment_data = inline_comment.to_simplified_dict()
@@ -927,6 +932,68 @@ async def delete_inline_comment(
         }
 
     return json.dumps(response, indent=2, ensure_ascii=False)
+
+
+@confluence_mcp.tool(tags={"confluence", "read"})
+async def get_inline_comment_children(
+    ctx: Context,
+    comment_id: Annotated[
+        str, Field(description="The ID of the parent inline comment")
+    ],
+    return_markdown: Annotated[
+        bool, Field(description="Whether to return content in markdown format (true) or HTML (false)")
+    ] = True,
+    limit: Annotated[
+        int, Field(description="Maximum number of child comments to return (1-50)", ge=1, le=50)
+    ] = 25,
+    cursor: Annotated[
+        str | None, Field(description="Cursor for pagination (optional)")
+    ] = None,
+) -> str:
+    """Get child comments of a specific inline comment.
+
+    Args:
+        ctx: The FastMCP context.
+        comment_id: The ID of the parent inline comment.
+        return_markdown: Whether to return content in markdown format.
+        limit: Maximum number of child comments to return.
+        cursor: Cursor for pagination.
+
+    Returns:
+        JSON string representing a list of child comment objects.
+    """
+    confluence_fetcher = await get_confluence_fetcher(ctx)
+    try:
+        child_comments = confluence_fetcher.get_inline_comment_children(
+            comment_id=comment_id,
+            return_markdown=return_markdown,
+            limit=limit,
+            cursor=cursor
+        )
+
+        # Convert comments to simplified format
+        formatted_comments = []
+        for comment in child_comments:
+            comment_data = comment.to_simplified_dict()
+            formatted_comments.append(comment_data)
+
+        response = {
+            "success": True,
+            "comment_id": comment_id,
+            "child_comments": formatted_comments,
+            "count": len(formatted_comments)
+        }
+
+        return json.dumps(response, indent=2, ensure_ascii=False)
+
+    except Exception as e:
+        logger.error(f"Error fetching child comments for inline comment {comment_id}: {str(e)}")
+        response = {
+            "success": False,
+            "message": f"Error fetching child comments for inline comment {comment_id}",
+            "error": str(e),
+        }
+        return json.dumps(response, indent=2, ensure_ascii=False)
 
 
 @confluence_mcp.tool(tags={"confluence", "read"})

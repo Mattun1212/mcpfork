@@ -18,20 +18,6 @@ from .common import ConfluenceUser
 logger = logging.getLogger(__name__)
 
 
-class ConfluenceComment(ApiModel, TimestampMixin):
-    """
-    Model representing a Confluence comment.
-    """
-
-    id: str = CONFLUENCE_DEFAULT_ID
-    title: str | None = None
-    body: str = EMPTY_STRING
-    created: str = EMPTY_STRING
-    updated: str = EMPTY_STRING
-    author: ConfluenceUser | None = None
-    type: str = "comment"  # "comment", "page", etc.
-
-
 class ConfluenceInlineComment(ApiModel, TimestampMixin):
     """
     Model representing a Confluence inline comment (API v2).
@@ -102,14 +88,45 @@ class ConfluenceInlineComment(ApiModel, TimestampMixin):
         properties = data.get("properties", {})
         inline_comment_props = data.get("inlineCommentProperties", {})
 
-        # API v2 standard fields
-        text_selection = inline_comment_props.get("textSelection") or properties.get("textSelection")
-        text_selection_match_count = inline_comment_props.get("textSelectionMatchCount") or properties.get("textSelectionMatchCount", 1)
-        text_selection_match_index = inline_comment_props.get("textSelectionMatchIndex") or properties.get("textSelectionMatchIndex", 0)
+        # Handle properties that can be in different structures based on API v2 spec
+        # For GET responses, properties may be in the "properties" object or direct fields
+        # For POST responses, inlineCommentProperties are typically returned as direct fields
 
-        # Legacy fields (for backward compatibility)
-        inline_marker_ref = properties.get("inlineMarkerRef") or properties.get("inline-marker-ref")
-        inline_original_selection = properties.get("inlineOriginalSelection") or properties.get("inline-original-selection")
+        # API v2 standard fields - try multiple locations for compatibility
+        text_selection = (
+            inline_comment_props.get("textSelection") or
+            properties.get("textSelection") or
+            data.get("textSelection")
+        )
+
+        text_selection_match_count = (
+            inline_comment_props.get("textSelectionMatchCount") or
+            properties.get("textSelectionMatchCount") or
+            data.get("textSelectionMatchCount") or
+            1
+        )
+
+        text_selection_match_index = (
+            inline_comment_props.get("textSelectionMatchIndex") or
+            properties.get("textSelectionMatchIndex") or
+            data.get("textSelectionMatchIndex") or
+            0
+        )
+
+        # Legacy fields (for backward compatibility) - check both naming conventions
+        inline_marker_ref = (
+            properties.get("inlineMarkerRef") or
+            properties.get("inline-marker-ref") or
+            data.get("inlineMarkerRef") or
+            data.get("inline-marker-ref")
+        )
+
+        inline_original_selection = (
+            properties.get("inlineOriginalSelection") or
+            properties.get("inline-original-selection") or
+            data.get("inlineOriginalSelection") or
+            data.get("inline-original-selection")
+        )
 
         # Version information
         version_data = data.get("version", {})

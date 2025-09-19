@@ -250,13 +250,39 @@ class CommentsMixin(ConfluenceClient):
             logger.debug("Full exception details for inline comments:", exc_info=True)
             return []
 
+    def _count_text_matches(self, page_content: str, text_selection: str) -> int:
+        """
+        Count the number of occurrences of text_selection in page content.
+
+        Args:
+            page_content: The page content (HTML or text)
+            text_selection: The text to count
+
+        Returns:
+            Number of matches found
+        """
+        if not page_content or not text_selection:
+            return 0
+
+        # Convert HTML to plain text for more accurate matching
+        from html import unescape
+        import re
+
+        # Remove HTML tags and decode HTML entities
+        text_only = re.sub(r'<[^>]+>', '', page_content)
+        text_only = unescape(text_only)
+
+        # Count occurrences
+        return text_only.count(text_selection)
+
     def add_inline_comment(
         self,
         page_id: str,
         content: str,
         text_selection: str,
-        text_selection_match_count: int = 1,
-        text_selection_match_index: int = 0
+        text_selection_match_count: int | None = None,
+        text_selection_match_index: int = 0,
+        auto_detect_matches: bool = True
     ) -> ConfluenceInlineComment | None:
         """
         Add an inline comment to a Confluence page.
@@ -265,16 +291,36 @@ class CommentsMixin(ConfluenceClient):
             page_id: The ID of the page to add the inline comment to
             content: The content of the comment (in markdown format)
             text_selection: The text that was selected for the inline comment
-            text_selection_match_count: How many matches of the text exist (default: 1)
+            text_selection_match_count: How many matches of the text exist (if None and auto_detect_matches=True, will be auto-detected)
             text_selection_match_index: Which match to target (0-based, default: 0)
+            auto_detect_matches: Whether to automatically detect the number of matches (default: True)
 
         Returns:
             ConfluenceInlineComment object if comment was added successfully, None otherwise
         """
         try:
-            # Get page info to extract space details
-            page = self.confluence.get_page_by_id(page_id=page_id, expand="space")
+            # Get page info to extract space details and content for auto-detection
+            page = self.confluence.get_page_by_id(
+                page_id=page_id,
+                expand="space,body.storage" if auto_detect_matches and text_selection_match_count is None else "space"
+            )
             space_key = page.get("space", {}).get("key", "")
+
+            # Auto-detect match count if requested and not provided
+            if auto_detect_matches and text_selection_match_count is None:
+                page_content = page.get("body", {}).get("storage", {}).get("value", "")
+                text_selection_match_count = self._count_text_matches(page_content, text_selection)
+                logger.info(f"Auto-detected {text_selection_match_count} matches for text selection: {text_selection[:50]}...")
+
+                if text_selection_match_count == 0:
+                    logger.warning(f"No matches found for text selection: {text_selection}")
+                    return None
+                elif text_selection_match_index >= text_selection_match_count:
+                    logger.error(f"text_selection_match_index ({text_selection_match_index}) is out of range. Found {text_selection_match_count} matches.")
+                    return None
+            elif text_selection_match_count is None:
+                # Fallback to default if auto_detect is disabled
+                text_selection_match_count = 1
 
             # Convert markdown to Confluence storage format if needed
             if not content.strip().startswith("<"):
@@ -684,3 +730,131 @@ class CommentsMixin(ConfluenceClient):
             logger.error(f"Unexpected error deleting inline comment {comment_id}: {str(e)}")
             logger.debug("Full exception details for deleting inline comment:", exc_info=True)
             return False
+
+    def get_inline_comment_children(
+        self,
+        comment_id: str,
+        return_markdown: bool = True,
+        limit: int = 25,
+        cursor: str | None = None
+    ) -> list[ConfluenceInlineComment]:
+        """
+        Get child comments of a specific inline comment.
+
+        Args:
+            comment_id: The ID of the parent inline comment
+            return_markdown: When True, returns content in markdown format,
+                           otherwise returns raw HTML (default: True)
+            limit: Maximum number of child comments to return (default: 25)
+            cursor: Cursor for pagination (optional)
+
+        Returns:
+            List of ConfluenceInlineComment models containing child comment content and metadata
+        """
+        try:
+            # Use the Confluence REST API v2 to get child comments
+            from urllib.parse import urljoin
+
+            # Construct the inline comment children endpoint URL
+            base_url = self.config.url
+            if not base_url.endswith('/'):
+                base_url += '/'
+            children_url = urljoin(base_url, f"wiki/api/v2/inline-comments/{comment_id}/children")
+
+            # Prepare query parameters
+            params = {"limit": limit}
+            if cursor:
+                params["cursor"] = cursor
+
+            # Get authentication headers
+            auth = self.confluence._session.auth if hasattr(self.confluence, '_session') else None
+            headers = {"Accept": "application/json"}
+
+            # Debug logging
+            logger.debug(f"Making GET request to: {children_url}")
+            logger.debug(f"Query params: {params}")
+
+            # Make the request
+            response = requests.get(
+                children_url,
+                auth=auth,
+                headers=headers,
+                params=params,
+                verify=self.config.verify_ssl
+            )
+
+            # Log response details for debugging
+            logger.debug(f"Response status: {response.status_code}")
+            logger.debug(f"Response content: {response.text}")
+
+            response.raise_for_status()
+
+            response_data = response.json()
+
+            if not response_data or "results" not in response_data:
+                logger.info(f"No child comments found for inline comment {comment_id}")
+                return []
+
+            # Process each child comment
+            comment_models = []
+            for comment_data in response_data.get("results", []):
+                # Get the content based on format
+                body_content = ""
+                if "body" in comment_data:
+                    body = comment_data["body"]
+                    if "view" in body and body["view"].get("value"):
+                        body_content = body["view"]["value"]
+                    elif "storage" in body and body["storage"].get("value"):
+                        body_content = body["storage"]["value"]
+                    elif "atlas_doc_format" in body and body["atlas_doc_format"].get("value"):
+                        body_content = body["atlas_doc_format"]["value"]
+
+                # Process HTML content if we have it
+                if body_content:
+                    processed_html, processed_markdown = (
+                        self.preprocessor.process_html_content(
+                            body_content, space_key="", confluence_client=self.confluence
+                        )
+                    )
+
+                    # Create a copy of the comment data to modify
+                    modified_comment_data = comment_data.copy()
+
+                    # Modify the body value based on the return format
+                    if "body" not in modified_comment_data:
+                        modified_comment_data["body"] = {}
+                    if "view" not in modified_comment_data["body"]:
+                        modified_comment_data["body"]["view"] = {}
+
+                    # Set the appropriate content based on return format
+                    modified_comment_data["body"]["view"]["value"] = (
+                        processed_markdown if return_markdown else processed_html
+                    )
+                else:
+                    modified_comment_data = comment_data
+
+                # Create the model with the processed content
+                comment_model = ConfluenceInlineComment.from_api_response(
+                    modified_comment_data,
+                    base_url=self.config.url,
+                )
+
+                comment_models.append(comment_model)
+
+            logger.info(f"Retrieved {len(comment_models)} child comments for inline comment {comment_id}")
+            return comment_models
+
+        except requests.RequestException as e:
+            logger.error(f"Network error when fetching child comments for inline comment {comment_id}: {str(e)}")
+            if hasattr(e, 'response') and e.response is not None:
+                logger.error(f"Response status: {e.response.status_code}")
+                logger.error(f"Response body: {e.response.text}")
+            return []
+        except (ValueError, TypeError, KeyError) as e:
+            logger.error(f"Error processing child comments data for inline comment {comment_id}: {str(e)}")
+            logger.debug("Full exception details for child comments:", exc_info=True)
+            return []
+        except Exception as e:  # noqa: BLE001 - Intentional fallback with full logging
+            logger.error(f"Unexpected error fetching child comments for inline comment {comment_id}: {str(e)}")
+            logger.debug("Full exception details for child comments:", exc_info=True)
+            return []
