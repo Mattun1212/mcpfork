@@ -294,10 +294,8 @@ class CommentsMixin(ConfluenceClient):
             request_body = {
                 "pageId": page_id,
                 "body": {
-                    "storage": {
-                        "value": content,
-                        "representation": "storage"
-                    }
+                    "representation": "storage",
+                    "value": content
                 },
                 "inlineCommentProperties": {
                     "textSelection": text_selection,
@@ -310,6 +308,11 @@ class CommentsMixin(ConfluenceClient):
             auth = self.confluence._session.auth if hasattr(self.confluence, '_session') else None
             headers = {"Accept": "application/json", "Content-Type": "application/json"}
 
+            # Debug logging
+            logger.debug(f"Making POST request to: {inline_comments_url}")
+            logger.debug(f"Request body: {request_body}")
+            logger.debug(f"Headers: {headers}")
+
             # Make the request
             response = requests.post(
                 inline_comments_url,
@@ -318,6 +321,12 @@ class CommentsMixin(ConfluenceClient):
                 json=request_body,
                 verify=self.config.verify_ssl
             )
+
+            # Log response details for debugging
+            logger.debug(f"Response status: {response.status_code}")
+            logger.debug(f"Response headers: {dict(response.headers)}")
+            logger.debug(f"Response content: {response.text}")
+
             response.raise_for_status()
 
             response_data = response.json()
@@ -326,13 +335,19 @@ class CommentsMixin(ConfluenceClient):
                 logger.error("Failed to add inline comment: empty response")
                 return None
 
-            # Process the comment to return a consistent model
+            # Log successful response for debugging
+            logger.info(f"Successfully created inline comment with ID: {response_data.get('id', 'unknown')}")
+
+            # Process the comment to return a consistent model based on API v2 response structure
             body_content = ""
             if "body" in response_data:
+                # API v2 returns body with storage, atlas_doc_format, and view
                 if "view" in response_data["body"]:
                     body_content = response_data["body"]["view"].get("value", "")
                 elif "storage" in response_data["body"]:
                     body_content = response_data["body"]["storage"].get("value", "")
+                elif "atlas_doc_format" in response_data["body"]:
+                    body_content = response_data["body"]["atlas_doc_format"].get("value", "")
 
             _, processed_markdown = self.preprocessor.process_html_content(
                 body_content,
@@ -356,12 +371,16 @@ class CommentsMixin(ConfluenceClient):
             )
 
         except requests.RequestException as e:
-            logger.error(f"Network error when adding inline comment: {str(e)}")
+            logger.error(f"Network error when adding inline comment to page {page_id}: {str(e)}")
+            if hasattr(e, 'response') and e.response is not None:
+                logger.error(f"Response status: {e.response.status_code}")
+                logger.error(f"Response body: {e.response.text}")
             return None
         except (ValueError, TypeError, KeyError) as e:
-            logger.error(f"Error processing inline comment data: {str(e)}")
+            logger.error(f"Error processing inline comment data for page {page_id}: {str(e)}")
+            logger.debug("Full exception details for data processing:", exc_info=True)
             return None
         except Exception as e:  # noqa: BLE001 - Intentional fallback with full logging
-            logger.error(f"Unexpected error adding inline comment: {str(e)}")
+            logger.error(f"Unexpected error adding inline comment to page {page_id}: {str(e)}")
             logger.debug("Full exception details for adding inline comment:", exc_info=True)
             return None
