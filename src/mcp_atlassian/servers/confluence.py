@@ -677,6 +677,98 @@ async def add_comment(
 
 
 @confluence_mcp.tool(tags={"confluence", "read"})
+async def get_inline_comments(
+    ctx: Context,
+    page_id: Annotated[
+        str,
+        Field(
+            description=(
+                "Confluence page ID (numeric ID, can be parsed from URL, "
+                "e.g. from 'https://example.atlassian.net/wiki/spaces/TEAM/pages/123456789/Page+Title' "
+                "-> '123456789')"
+            )
+        ),
+    ],
+) -> str:
+    """Get inline comments for a specific Confluence page.
+
+    Args:
+        ctx: The FastMCP context.
+        page_id: Confluence page ID.
+
+    Returns:
+        JSON string representing a list of inline comment objects.
+    """
+    confluence_fetcher = await get_confluence_fetcher(ctx)
+    inline_comments = confluence_fetcher.get_inline_comments(page_id)
+    formatted_comments = [comment.to_simplified_dict() for comment in inline_comments]
+    return json.dumps(formatted_comments, indent=2, ensure_ascii=False)
+
+
+@confluence_mcp.tool(tags={"confluence", "write"})
+@check_write_access
+async def add_inline_comment(
+    ctx: Context,
+    page_id: Annotated[
+        str, Field(description="The ID of the page to add an inline comment to")
+    ],
+    content: Annotated[
+        str, Field(description="The inline comment content in Markdown format")
+    ],
+    inline_marker_ref: Annotated[
+        str, Field(description="Reference marker for the inline comment position")
+    ],
+    inline_original_selection: Annotated[
+        str, Field(description="Original text selection for the inline comment")
+    ],
+) -> str:
+    """Add an inline comment to a Confluence page.
+
+    Args:
+        ctx: The FastMCP context.
+        page_id: The ID of the page to add an inline comment to.
+        content: The inline comment content in Markdown format.
+        inline_marker_ref: Reference marker for the inline comment position.
+        inline_original_selection: Original text selection for the inline comment.
+
+    Returns:
+        JSON string representing the created inline comment.
+
+    Raises:
+        ValueError: If in read-only mode or Confluence client is unavailable.
+    """
+    confluence_fetcher = await get_confluence_fetcher(ctx)
+    try:
+        inline_comment = confluence_fetcher.add_inline_comment(
+            page_id=page_id,
+            content=content,
+            inline_marker_ref=inline_marker_ref,
+            inline_original_selection=inline_original_selection
+        )
+        if inline_comment:
+            comment_data = inline_comment.to_simplified_dict()
+            response = {
+                "success": True,
+                "message": "Inline comment added successfully",
+                "inline_comment": comment_data,
+            }
+        else:
+            response = {
+                "success": False,
+                "message": f"Unable to add inline comment to page {page_id}. API request completed but inline comment creation unsuccessful.",
+            }
+    except Exception as e:
+        logger.error(f"Error adding inline comment to Confluence page {page_id}: {str(e)}")
+        response = {
+            "success": False,
+            "message": f"Error adding inline comment to page {page_id}",
+            "error": str(e),
+        }
+
+    return json.dumps(response, indent=2, ensure_ascii=False)
+
+
+@confluence_mcp.tool(tags={"confluence", "read"})
 async def search_user(
     ctx: Context,
     query: Annotated[

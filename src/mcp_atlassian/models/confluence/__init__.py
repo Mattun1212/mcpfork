@@ -12,7 +12,7 @@ Key models:
 - ConfluenceVersion: Content versioning information
 """
 
-from .comment import ConfluenceComment
+from .comment import ConfluenceComment, ConfluenceInlineComment
 from .common import ConfluenceAttachment, ConfluenceUser
 from .label import ConfluenceLabel
 from .page import ConfluencePage, ConfluenceVersion
@@ -26,6 +26,7 @@ __all__ = [
     "ConfluenceSpace",
     "ConfluenceVersion",
     "ConfluenceComment",
+    "ConfluenceInlineComment",
     "ConfluenceLabel",
     "ConfluencePage",
     "ConfluenceSearchResult",
