@@ -337,6 +337,10 @@ class CommentsMixin(ConfluenceClient):
             auth = self.confluence._session.auth if hasattr(self.confluence, '_session') else None
             headers = {"Accept": "application/json", "Content-Type": "application/json"}
 
+            # Copy Authorization header from session if it exists (for Personal Access Token auth)
+            if hasattr(self.confluence, '_session') and 'Authorization' in self.confluence._session.headers:
+                headers['Authorization'] = self.confluence._session.headers['Authorization']
+
             # Construct the URL and request body based on Confluence version
             base_url = self.config.url
             if not base_url.endswith('/'):
