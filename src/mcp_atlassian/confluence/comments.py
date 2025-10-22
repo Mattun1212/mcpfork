@@ -327,37 +327,68 @@ class CommentsMixin(ConfluenceClient):
                 # If content doesn't appear to be HTML/XML, treat it as markdown
                 content = self.preprocessor.markdown_to_confluence_storage(content)
 
-            # Use the Confluence REST API v2 to create inline comment
-            from urllib.parse import urljoin
+            # Check if this is Confluence Cloud or Server/Data Center
+            is_cloud = self.config.is_cloud
 
-            # Construct the inline comments endpoint URL
+            from urllib.parse import urljoin
+            import time
+
+            # Get authentication
+            auth = self.confluence._session.auth if hasattr(self.confluence, '_session') else None
+            headers = {"Accept": "application/json", "Content-Type": "application/json"}
+
+            # Construct the URL and request body based on Confluence version
             base_url = self.config.url
             if not base_url.endswith('/'):
                 base_url += '/'
-            inline_comments_url = urljoin(base_url, "wiki/api/v2/inline-comments")
 
-            # Prepare the request body according to Confluence API specification
-            request_body = {
-                "pageId": page_id,
-                "body": {
-                    "representation": "storage",
-                    "value": content
-                },
-                "inlineCommentProperties": {
-                    "textSelection": text_selection,
-                    "textSelectionMatchCount": text_selection_match_count,
-                    "textSelectionMatchIndex": text_selection_match_index
+            if is_cloud:
+                # Confluence Cloud uses API v2
+                inline_comments_url = urljoin(base_url, "wiki/api/v2/inline-comments")
+                request_body = {
+                    "pageId": page_id,
+                    "body": {
+                        "representation": "storage",
+                        "value": content
+                    },
+                    "inlineCommentProperties": {
+                        "textSelection": text_selection,
+                        "textSelectionMatchCount": text_selection_match_count,
+                        "textSelectionMatchIndex": text_selection_match_index
+                    }
                 }
-            }
-
-            # Get authentication headers
-            auth = self.confluence._session.auth if hasattr(self.confluence, '_session') else None
-            headers = {"Accept": "application/json", "Content-Type": "application/json"}
+            else:
+                # Confluence Server/Data Center uses API v1
+                inline_comments_url = urljoin(base_url, "rest/api/content")
+                request_body = {
+                    "type": "comment",
+                    "container": {
+                        "id": page_id,
+                        "type": "page"
+                    },
+                    "body": {
+                        "storage": {
+                            "value": content,
+                            "representation": "storage"
+                        }
+                    },
+                    "extensions": {
+                        "location": "inline",
+                        "inlineProperties": {
+                            "numMatches": text_selection_match_count,
+                            "originalSelection": text_selection,
+                            "matchIndex": text_selection_match_index,
+                            "serializedHighlights": f'[["{text_selection}"]]',
+                            "lastFetchTime": str(int(time.time()))
+                        }
+                    }
+                }
 
             # Debug logging
             logger.debug(f"Making POST request to: {inline_comments_url}")
             logger.debug(f"Request body: {request_body}")
             logger.debug(f"Headers: {headers}")
+            logger.debug(f"Using {'Cloud' if is_cloud else 'Server/Data Center'} API")
 
             # Make the request
             response = requests.post(
@@ -384,10 +415,10 @@ class CommentsMixin(ConfluenceClient):
             # Log successful response for debugging
             logger.info(f"Successfully created inline comment with ID: {response_data.get('id', 'unknown')}")
 
-            # Process the comment to return a consistent model based on API v2 response structure
+            # Process the comment to return a consistent model
             body_content = ""
             if "body" in response_data:
-                # API v2 returns body with storage, atlas_doc_format, and view
+                # Try different body formats
                 if "view" in response_data["body"]:
                     body_content = response_data["body"]["view"].get("value", "")
                 elif "storage" in response_data["body"]:
