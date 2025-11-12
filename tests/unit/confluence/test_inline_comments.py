@@ -196,10 +196,13 @@ class TestInlineCommentsMixin:
             mock_response = Mock()
             mock_response.json.return_value = mock_response_data
             mock_response.raise_for_status.return_value = None
+            mock_response.status_code = 200
+            mock_response.headers = {}
+            mock_response.text = '{"id": "54321"}'
             mock_post.return_value = mock_response
 
             # Execute the method
-            result = comments_mixin.add_inline_comment(
+            result, error_message = comments_mixin.add_inline_comment(
                 page_id="67890",
                 content="This is a new inline comment",
                 text_selection="new selection"
@@ -207,6 +210,7 @@ class TestInlineCommentsMixin:
 
             # Verify results
             assert result is not None
+            assert error_message is None
             assert isinstance(result, ConfluenceInlineComment)
             assert result.id == "54321"
             assert result.body == "This is a new inline comment"
@@ -230,15 +234,18 @@ class TestInlineCommentsMixin:
         with patch('requests.post') as mock_post:
             mock_post.side_effect = requests.RequestException("Network error")
 
-            # Execute the method
-            result = comments_mixin.add_inline_comment(
+            # Execute the method - disable auto-detection to skip the match count check
+            result, error_message = comments_mixin.add_inline_comment(
                 page_id="67890",
                 content="This is a new inline comment",
-                text_selection="new selection"
+                text_selection="new selection",
+                auto_detect_matches=False
             )
 
-            # Should return None on error
+            # Should return None and error message on error
             assert result is None
+            assert error_message is not None
+            assert "Network error" in error_message
 
     def test_add_inline_comment_empty_response(self, comments_mixin):
         """Test handling of empty response when adding inline comment."""
@@ -256,17 +263,23 @@ class TestInlineCommentsMixin:
             mock_response = Mock()
             mock_response.json.return_value = None
             mock_response.raise_for_status.return_value = None
+            mock_response.status_code = 200
+            mock_response.headers = {}
+            mock_response.text = ''
             mock_post.return_value = mock_response
 
-            # Execute the method
-            result = comments_mixin.add_inline_comment(
+            # Execute the method - disable auto-detection to skip the match count check
+            result, error_message = comments_mixin.add_inline_comment(
                 page_id="67890",
                 content="This is a new inline comment",
-                text_selection="new selection"
+                text_selection="new selection",
+                auto_detect_matches=False
             )
 
-            # Should return None on empty response
+            # Should return None and error message on empty response
             assert result is None
+            assert error_message is not None
+            assert "empty response" in error_message
 
     def test_add_inline_comment_with_html_content(self, comments_mixin):
         """Test adding inline comment with HTML content (should not convert)."""
@@ -295,24 +308,31 @@ class TestInlineCommentsMixin:
             mock_response = Mock()
             mock_response.json.return_value = mock_response_data
             mock_response.raise_for_status.return_value = None
+            mock_response.status_code = 200
+            mock_response.headers = {}
+            mock_response.text = '{"id": "54321"}'
             mock_post.return_value = mock_response
 
-            # Execute with HTML content
-            result = comments_mixin.add_inline_comment(
+            # Execute with HTML content - disable auto-detection to skip the match count check
+            result, error_message = comments_mixin.add_inline_comment(
                 page_id="67890",
                 content="<p>HTML content</p>",
-                text_selection="selection"
+                text_selection="selection",
+                auto_detect_matches=False
             )
 
             # Should not call markdown conversion
             comments_mixin.preprocessor.markdown_to_confluence_storage.assert_not_called()
 
             # Verify the request was made with the original HTML
+            # Note: The config uses a Cloud URL (*.atlassian.net) so the body format is Cloud API v2
             mock_post.assert_called_once()
             call_args = mock_post.call_args
             request_body = call_args[1]['json']
-            assert request_body['body']['storage']['value'] == "<p>HTML content</p>"
+            assert request_body['body']['value'] == "<p>HTML content</p>"
+            assert request_body['body']['representation'] == "storage"
             assert request_body['inlineCommentProperties']['textSelection'] == "selection"
+            assert error_message is None
 
     def test_add_inline_comment_auto_detect_success(self, comments_mixin):
         """Test successful creation of inline comment with auto-detection."""
@@ -357,10 +377,13 @@ class TestInlineCommentsMixin:
             mock_response = Mock()
             mock_response.json.return_value = mock_response_data
             mock_response.raise_for_status.return_value = None
+            mock_response.status_code = 200
+            mock_response.headers = {}
+            mock_response.text = '{"id": "54321"}'
             mock_post.return_value = mock_response
 
             # Execute the method with auto-detection enabled
-            result = comments_mixin.add_inline_comment(
+            result, error_message = comments_mixin.add_inline_comment(
                 page_id="67890",
                 content="確認しました",
                 text_selection="セットJANの価格関連情報",
@@ -370,6 +393,7 @@ class TestInlineCommentsMixin:
 
             # Verify results
             assert result is not None
+            assert error_message is None
             assert isinstance(result, ConfluenceInlineComment)
             assert result.id == "54321"
             assert result.body == "確認しました"
@@ -398,15 +422,17 @@ class TestInlineCommentsMixin:
         }
 
         # Execute the method with auto-detection enabled
-        result = comments_mixin.add_inline_comment(
+        result, error_message = comments_mixin.add_inline_comment(
             page_id="67890",
             content="確認しました",
             text_selection="存在しないテキスト",
             auto_detect_matches=True
         )
 
-        # Should return None when no matches found
+        # Should return None and error message when no matches found
         assert result is None
+        assert error_message is not None
+        assert "No matches found" in error_message
 
     def test_add_inline_comment_auto_detect_index_out_of_range(self, comments_mixin):
         """Test handling when match index is out of range."""
@@ -421,7 +447,7 @@ class TestInlineCommentsMixin:
         }
 
         # Execute the method with auto-detection enabled and index out of range
-        result = comments_mixin.add_inline_comment(
+        result, error_message = comments_mixin.add_inline_comment(
             page_id="67890",
             content="確認しました",
             text_selection="テスト文字列",
@@ -429,8 +455,10 @@ class TestInlineCommentsMixin:
             auto_detect_matches=True
         )
 
-        # Should return None when index is out of range
+        # Should return None and error message when index is out of range
         assert result is None
+        assert error_message is not None
+        assert "out of range" in error_message
 
     def test_count_text_matches(self, comments_mixin):
         """Test the _count_text_matches helper method."""

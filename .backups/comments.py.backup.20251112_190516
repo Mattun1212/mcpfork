@@ -283,7 +283,7 @@ class CommentsMixin(ConfluenceClient):
         text_selection_match_count: int | None = None,
         text_selection_match_index: int = 0,
         auto_detect_matches: bool = True
-    ) -> tuple[ConfluenceInlineComment | None, str | None]:
+    ) -> ConfluenceInlineComment | None:
         """
         Add an inline comment to a Confluence page.
 
@@ -296,9 +296,7 @@ class CommentsMixin(ConfluenceClient):
             auto_detect_matches: Whether to automatically detect the number of matches (default: True)
 
         Returns:
-            Tuple of (ConfluenceInlineComment or None, error_message or None)
-            - On success: (comment_object, None)
-            - On failure: (None, error_message)
+            ConfluenceInlineComment object if comment was added successfully, None otherwise
         """
         try:
             # Get page info to extract space details and content for auto-detection
@@ -315,13 +313,11 @@ class CommentsMixin(ConfluenceClient):
                 logger.info(f"Auto-detected {text_selection_match_count} matches for text selection: {text_selection[:50]}...")
 
                 if text_selection_match_count == 0:
-                    error_msg = f"No matches found for text selection: '{text_selection[:100]}...'"
-                    logger.warning(error_msg)
-                    return None, error_msg
+                    logger.warning(f"No matches found for text selection: {text_selection}")
+                    return None
                 elif text_selection_match_index >= text_selection_match_count:
-                    error_msg = f"text_selection_match_index ({text_selection_match_index}) is out of range. Found {text_selection_match_count} matches."
-                    logger.error(error_msg)
-                    return None, error_msg
+                    logger.error(f"text_selection_match_index ({text_selection_match_index}) is out of range. Found {text_selection_match_count} matches.")
+                    return None
             elif text_selection_match_count is None:
                 # Fallback to default if auto_detect is disabled
                 text_selection_match_count = 1
@@ -417,9 +413,8 @@ class CommentsMixin(ConfluenceClient):
             response_data = response.json()
 
             if not response_data:
-                error_msg = "Failed to add inline comment: empty response from API"
-                logger.error(error_msg)
-                return None, error_msg
+                logger.error("Failed to add inline comment: empty response")
+                return None
 
             # Log successful response for debugging
             logger.info(f"Successfully created inline comment with ID: {response_data.get('id', 'unknown')}")
@@ -451,31 +446,26 @@ class CommentsMixin(ConfluenceClient):
             modified_response["body"]["view"]["value"] = processed_markdown
 
             # Create and return the inline comment model
-            inline_comment = ConfluenceInlineComment.from_api_response(
+            return ConfluenceInlineComment.from_api_response(
                 modified_response,
                 base_url=self.config.url,
             )
-            return inline_comment, None
 
         except requests.RequestException as e:
-            error_msg = f"Network error when adding inline comment to page {page_id}: {str(e)}"
+            logger.error(f"Network error when adding inline comment to page {page_id}: {str(e)}")
             if hasattr(e, 'response') and e.response is not None:
-                error_msg += f" | Status: {e.response.status_code} | Response: {e.response.text}"
-                logger.error(error_msg)
-            else:
-                logger.error(error_msg)
-            return None, error_msg
+                logger.error(f"Response status: {e.response.status_code}")
+                logger.error(f"Response body: {e.response.text}")
+            return None
         except (ValueError, TypeError, KeyError
         ) as e:
-            error_msg = f"Error processing inline comment data for page {page_id}: {str(e)}"
-            logger.error(error_msg)
+            logger.error(f"Error processing inline comment data for page {page_id}: {str(e)}")
             logger.debug("Full exception details for data processing:", exc_info=True)
-            return None, error_msg
+            return None
         except Exception as e:  # noqa: BLE001 - Intentional fallback with full logging
-            error_msg = f"Unexpected error adding inline comment to page {page_id}: {str(e)}"
-            logger.error(error_msg)
+            logger.error(f"Unexpected error adding inline comment to page {page_id}: {str(e)}")
             logger.debug("Full exception details for adding inline comment:", exc_info=True)
-            return None, error_msg
+            return None
 
     def get_inline_comment_by_id(self, comment_id: str) -> ConfluenceInlineComment | None:
         """

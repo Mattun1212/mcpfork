@@ -747,7 +747,7 @@ async def add_inline_comment(
     """
     confluence_fetcher = await get_confluence_fetcher(ctx)
     try:
-        inline_comment, error_message = confluence_fetcher.add_inline_comment(
+        inline_comment = confluence_fetcher.add_inline_comment(
             page_id=page_id,
             content=content,
             text_selection=text_selection,
@@ -765,15 +765,14 @@ async def add_inline_comment(
         else:
             response = {
                 "success": False,
-                "message": f"Unable to add inline comment to page {page_id}. {error_message or 'API request completed but inline comment creation unsuccessful.'}",
-                "error_details": error_message,
+                "message": f"Unable to add inline comment to page {page_id}. API request completed but inline comment creation unsuccessful.",
             }
     except Exception as e:
         logger.error(f"Error adding inline comment to Confluence page {page_id}: {str(e)}")
         response = {
             "success": False,
-            "message": f"Error adding inline comment to page {page_id}: {str(e)}",
-            "error_type": type(e).__name__,
+            "message": f"Error adding inline comment to page {page_id}",
+            "error": str(e),
         }
 
     return json.dumps(response, indent=2, ensure_ascii=False)
