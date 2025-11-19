@@ -1,0 +1,86 @@
+# Windows executable builder using Wine
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install Wine and dependencies
+RUN dpkg --add-architecture i386 && \
+    apt-get update && \
+    apt-get install -y \
+    wine \
+    wine32 \
+    wine64 \
+    wget \
+    xvfb \
+    cabextract \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install winetricks
+RUN wget https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks \
+    && chmod +x winetricks \
+    && mv winetricks /usr/local/bin/
+
+# Set Wine prefix
+ENV WINEPREFIX=/root/.wine
+ENV WINEARCH=win64
+ENV DISPLAY=:0
+
+# Initialize Wine
+RUN Xvfb :0 -screen 0 1024x768x16 & \
+    sleep 5 && \
+    wineboot --init && \
+    sleep 5
+
+# Download and install Python in Wine
+WORKDIR /tmp
+RUN wget https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe && \
+    Xvfb :0 -screen 0 1024x768x16 & \
+    sleep 5 && \
+    wine python-3.11.9-amd64.exe /quiet InstallAllUsers=1 PrependPath=1 && \
+    sleep 10
+
+# Set up Python paths in Wine
+ENV WINEPYTHON="C:\\Python311\\python.exe"
+
+WORKDIR /build
+
+# Copy source code
+COPY . .
+
+# Build script
+RUN echo '#!/bin/bash\n\
+set -e\n\
+Xvfb :0 -screen 0 1024x768x16 &\n\
+sleep 5\n\
+echo "Installing dependencies..."\n\
+wine "$WINEPYTHON" -m pip install --upgrade pip\n\
+wine "$WINEPYTHON" -m pip install -e .\n\
+wine "$WINEPYTHON" -m pip install pyinstaller\n\
+echo "Building Windows executable..."\n\
+wine "$WINEPYTHON" -m PyInstaller --onefile \
+  --name mcp-atlassian \
+  --console \
+  --hidden-import atlassian \
+  --hidden-import mcp \
+  --hidden-import fastmcp \
+  --hidden-import pydantic \
+  --hidden-import pydantic_core \
+  --hidden-import trio \
+  --hidden-import click \
+  --hidden-import beautifulsoup4 \
+  --hidden-import markdownify \
+  --hidden-import markdown \
+  --hidden-import dotenv \
+  --hidden-import thefuzz \
+  --hidden-import dateutil \
+  --hidden-import keyring \
+  --hidden-import cachetools \
+  --collect-all fastmcp \
+  --collect-all pydantic \
+  --collect-all mcp \
+  src/mcp_atlassian/__init__.py\n\
+echo "Build complete!"\n\
+ls -lh dist/\n\
+' > /build/build.sh && chmod +x /build/build.sh
+
+CMD ["/build/build.sh"]
