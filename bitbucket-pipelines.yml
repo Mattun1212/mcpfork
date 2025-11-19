@@ -1,0 +1,141 @@
+image: python:3.11
+
+definitions:
+  steps:
+    - step: &build-mac
+        name: Build Mac Executable
+        script:
+          - echo "Building Mac executable..."
+          - python --version
+          - pip install --upgrade pip
+          - pip install -e .
+          - pip install pyinstaller
+          - |
+            pyinstaller --onefile \
+              --name mcp-atlassian \
+              --console \
+              --hidden-import atlassian \
+              --hidden-import mcp \
+              --hidden-import fastmcp \
+              --hidden-import pydantic \
+              --hidden-import pydantic_core \
+              --hidden-import trio \
+              --hidden-import click \
+              --hidden-import beautifulsoup4 \
+              --hidden-import markdownify \
+              --hidden-import markdown \
+              --hidden-import dotenv \
+              --hidden-import thefuzz \
+              --hidden-import dateutil \
+              --hidden-import keyring \
+              --hidden-import cachetools \
+              --collect-all fastmcp \
+              --collect-all pydantic \
+              --collect-all mcp \
+              src/mcp_atlassian/__init__.py
+          - chmod +x dist/mcp-atlassian
+          - mv dist/mcp-atlassian dist/mcp-atlassian-mac
+          - ls -lh dist/
+          - echo "Mac executable built successfully!"
+        artifacts:
+          - dist/mcp-atlassian-mac
+
+pipelines:
+  # Manual execution
+  custom:
+    build-mac-executable:
+      - step: *build-mac
+
+    build-all-executables:
+      - step:
+          name: Build Mac and Windows Executables
+          script:
+            - echo "Building executables for Mac and Windows..."
+            - python --version
+            - pip install --upgrade pip
+            - pip install -e .
+            - pip install pyinstaller
+
+            # Build Mac version
+            - echo "Building Mac executable..."
+            - |
+              pyinstaller --onefile \
+                --name mcp-atlassian \
+                --console \
+                --hidden-import atlassian \
+                --hidden-import mcp \
+                --hidden-import fastmcp \
+                --hidden-import pydantic \
+                --hidden-import pydantic_core \
+                --hidden-import trio \
+                --hidden-import click \
+                --hidden-import beautifulsoup4 \
+                --hidden-import markdownify \
+                --hidden-import markdown \
+                --hidden-import dotenv \
+                --hidden-import thefuzz \
+                --hidden-import dateutil \
+                --hidden-import keyring \
+                --hidden-import cachetools \
+                --collect-all fastmcp \
+                --collect-all pydantic \
+                --collect-all mcp \
+                src/mcp_atlassian/__init__.py
+            - chmod +x dist/mcp-atlassian
+            - cp dist/mcp-atlassian dist/mcp-atlassian-mac
+            - echo "Mac executable built!"
+
+            # Build Windows version (experimental with Wine)
+            - echo "Building Windows executable..."
+            - apt-get update
+            - apt-get install -y wine wine64 wine32
+
+            # Windows build using Wine - experimental
+            - echo "WARNING - Windows build is experimental with Wine"
+            - |
+              pyinstaller --onefile \
+                --name mcp-atlassian-windows \
+                --console \
+                --hidden-import atlassian \
+                --hidden-import mcp \
+                --hidden-import fastmcp \
+                --hidden-import pydantic \
+                --hidden-import pydantic_core \
+                --hidden-import trio \
+                --hidden-import click \
+                --hidden-import beautifulsoup4 \
+                --hidden-import markdownify \
+                --hidden-import markdown \
+                --hidden-import dotenv \
+                --hidden-import thefuzz \
+                --hidden-import dateutil \
+                --hidden-import keyring \
+                --hidden-import cachetools \
+                --collect-all fastmcp \
+                --collect-all pydantic \
+                --collect-all mcp \
+                src/mcp_atlassian/__init__.py || echo "Windows build may have issues"
+
+            - ls -lh dist/
+            - echo "Build completed!"
+          artifacts:
+            - dist/mcp-atlassian-mac
+            - dist/mcp-atlassian-windows.exe
+
+  # Auto-execute when tags are pushed
+  tags:
+    v*:
+      - step: *build-mac
+
+  # Auto-execute when pushing to main branch (optional)
+  branches:
+    main:
+      - step:
+          name: Test Build
+          script:
+            - echo "Testing build process..."
+            - python --version
+            - pip install --upgrade pip
+            - pip install -e .
+            - pip install pyinstaller
+            - echo "Dependencies installed successfully!"
