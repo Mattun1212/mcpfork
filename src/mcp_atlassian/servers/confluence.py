@@ -1069,6 +1069,7 @@ async def search_user(
 
 @confluence_mcp.tool(tags={"confluence", "read"})
 async def download_attachments(
+    ctx: Context,
     page_id: str,
     target_dir: str,
     media_type_filter: str | None = None,
@@ -1090,6 +1091,8 @@ async def download_attachments(
         + (f" (filter: {media_type_filter})" if media_type_filter else "")
         + (f" (only used: {only_used_in_content})" if not only_used_in_content else " (only used in content)")
     )
+
+    confluence_fetcher = await get_confluence_fetcher(ctx)
 
     try:
         result = confluence_fetcher.download_page_attachments(

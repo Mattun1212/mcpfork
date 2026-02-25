@@ -125,8 +125,18 @@ class AttachmentsMixin(ConfluenceClient):
                     [urllib.parse.unquote(f) for f in url_matches]
                 )
 
+                # Extract Gliffy diagram names and add corresponding PNG files
+                # Gliffy macros have format: <ac:structured-macro ac:name="gliffy">...<ac:parameter ac:name="name">diagram_name</ac:parameter>...
+                gliffy_pattern = r'<ac:structured-macro[^>]*ac:name="gliffy"[^>]*>.*?<ac:parameter ac:name="name">([^<]+)</ac:parameter>.*?</ac:structured-macro>'
+                gliffy_matches = re.findall(gliffy_pattern, content, re.DOTALL)
+                for gliffy_name in gliffy_matches:
+                    # Gliffy diagrams are stored as both the diagram file and a PNG version
+                    referenced_filenames.add(gliffy_name)  # The Gliffy file itself
+                    referenced_filenames.add(f"{gliffy_name}.png")  # The PNG version
+
                 logger.info(
-                    f"Found {len(referenced_filenames)} referenced attachments in page content"
+                    f"Found {len(referenced_filenames)} referenced attachments in page content "
+                    f"(including {len(gliffy_matches)} Gliffy diagrams)"
                 )
             except Exception as e:
                 logger.warning(
