@@ -168,7 +168,10 @@ class CommentsMixin(ConfluenceClient):
             page = self.confluence.get_page_by_id(page_id=page_id, expand="space")
             space_key = page.get("space", {}).get("key", "")
 
-            # Use the Confluence REST API v2 to get inline comments
+            # Check if this is Confluence Cloud or Server/Data Center
+            is_cloud = self.config.is_cloud
+
+            # Use the Confluence REST API to get inline comments
             # Note: This uses a direct HTTP request since atlassian-python-api may not support inline comments yet
             from urllib.parse import urljoin
 
@@ -176,22 +179,75 @@ class CommentsMixin(ConfluenceClient):
             base_url = self.config.url
             if not base_url.endswith('/'):
                 base_url += '/'
-            inline_comments_url = urljoin(base_url, f"wiki/api/v2/pages/{page_id}/inline-comments")
 
             # Get authentication headers
             auth = self.confluence._session.auth if hasattr(self.confluence, '_session') else None
             headers = {"Accept": "application/json", "Content-Type": "application/json"}
 
-            # Make the request
-            response = requests.get(
-                inline_comments_url,
-                auth=auth,
-                headers=headers,
-                verify=self.config.verify_ssl
-            )
-            response.raise_for_status()
+            # Copy Authorization header from session if it exists (for Personal Access Token auth)
+            if hasattr(self.confluence, '_session') and 'Authorization' in self.confluence._session.headers:
+                headers['Authorization'] = self.confluence._session.headers['Authorization']
 
-            inline_comments_response = response.json()
+            if is_cloud:
+                # Confluence Cloud uses API v2
+                inline_comments_url = urljoin(base_url, "wiki/api/v2/inline-comments")
+                params = {"pageId": page_id}
+            else:
+                # Confluence Server/Data Center uses API v1
+                inline_comments_url = urljoin(base_url, f"rest/api/content/{page_id}/child/comment")
+                params = {"expand": "body.view.value,version,extensions.inlineProperties"}
+
+            # Make the request with retry logic for rate limiting
+            import time
+            max_retries = 3
+            retry_delay = 1.0  # seconds
+
+            for attempt in range(max_retries):
+                try:
+                    response = requests.get(
+                        inline_comments_url,
+                        auth=auth,
+                        headers=headers,
+                        params=params,
+                        verify=self.config.verify_ssl
+                    )
+                    response.raise_for_status()
+                    response_data = response.json()
+
+                    # For Server/Data Center, check if we got results
+                    # If empty and not the last attempt, retry after delay
+                    if not is_cloud:
+                        result_count = len(response_data.get("results", []))
+                        if result_count == 0 and attempt < max_retries - 1:
+                            logger.warning(f"[DEBUG] Got 0 results on attempt {attempt + 1}, retrying after {retry_delay}s...")
+                            time.sleep(retry_delay)
+                            continue
+
+                    # Success, break out of retry loop
+                    break
+
+                except requests.exceptions.HTTPError as e:
+                    if attempt < max_retries - 1:
+                        logger.warning(f"[DEBUG] HTTP error on attempt {attempt + 1}: {e}, retrying after {retry_delay}s...")
+                        time.sleep(retry_delay)
+                        continue
+                    else:
+                        raise
+
+            # Filter inline comments for Server/Data Center
+            if is_cloud:
+                inline_comments_response = response_data
+            else:
+                # For Server/Data Center, filter comments with location="inline"
+                all_comments = response_data.get("results", [])
+                inline_comments = [
+                    comment for comment in all_comments
+                    if comment.get("extensions", {}).get("location") == "inline"
+                ]
+
+                inline_comments_response = {
+                    "results": inline_comments
+                }
 
             # Process each inline comment
             comment_models = []
@@ -214,6 +270,20 @@ class CommentsMixin(ConfluenceClient):
 
                 # Create a copy of the comment data to modify
                 modified_comment_data = comment_data.copy()
+
+                # For Server/Data Center, map extensions.inlineProperties to API v2 format
+                if not is_cloud and "extensions" in modified_comment_data:
+                    inline_props = modified_comment_data["extensions"].get("inlineProperties", {})
+                    if inline_props:
+                        # Map Server/Data Center format to API v2 format
+                        modified_comment_data["inlineCommentProperties"] = {
+                            "textSelection": inline_props.get("originalSelection", ""),
+                            "textSelectionMatchCount": inline_props.get("numMatches", 1),
+                            "textSelectionMatchIndex": inline_props.get("matchIndex", 0)
+                        }
+                        # Also add pageId from container
+                        if "container" in modified_comment_data:
+                            modified_comment_data["pageId"] = modified_comment_data["container"].get("id")
 
                 # Modify the body value based on the return format
                 if "body" not in modified_comment_data:
@@ -488,18 +558,33 @@ class CommentsMixin(ConfluenceClient):
             ConfluenceInlineComment object if found, None otherwise
         """
         try:
-            # Use the Confluence REST API v2 to get specific inline comment
+            # Check if this is Confluence Cloud or Server/Data Center
+            is_cloud = self.config.is_cloud
+
+            # Use the Confluence REST API to get specific inline comment
             from urllib.parse import urljoin
 
             # Construct the inline comment endpoint URL
             base_url = self.config.url
             if not base_url.endswith('/'):
                 base_url += '/'
-            inline_comment_url = urljoin(base_url, f"wiki/api/v2/inline-comments/{comment_id}")
+
+            if is_cloud:
+                # Confluence Cloud uses API v2
+                inline_comment_url = urljoin(base_url, f"wiki/api/v2/inline-comments/{comment_id}")
+                params = {}
+            else:
+                # Confluence Server/Data Center uses API v1
+                inline_comment_url = urljoin(base_url, f"rest/api/content/{comment_id}")
+                params = {"expand": "body.view.value,version,extensions.inlineProperties,container"}
 
             # Get authentication headers
             auth = self.confluence._session.auth if hasattr(self.confluence, '_session') else None
             headers = {"Accept": "application/json"}
+
+            # Copy Authorization header from session if it exists (for Personal Access Token auth)
+            if hasattr(self.confluence, '_session') and 'Authorization' in self.confluence._session.headers:
+                headers['Authorization'] = self.confluence._session.headers['Authorization']
 
             # Debug logging
             logger.debug(f"Making GET request to: {inline_comment_url}")
@@ -509,6 +594,7 @@ class CommentsMixin(ConfluenceClient):
                 inline_comment_url,
                 auth=auth,
                 headers=headers,
+                params=params,
                 verify=self.config.verify_ssl
             )
 
@@ -551,6 +637,20 @@ class CommentsMixin(ConfluenceClient):
 
             # Create a copy of the comment data to modify
             modified_comment_data = comment_data.copy()
+
+            # For Server/Data Center, map extensions.inlineProperties to API v2 format
+            if not is_cloud and "extensions" in modified_comment_data:
+                inline_props = modified_comment_data["extensions"].get("inlineProperties", {})
+                if inline_props:
+                    # Map Server/Data Center format to API v2 format
+                    modified_comment_data["inlineCommentProperties"] = {
+                        "textSelection": inline_props.get("originalSelection", ""),
+                        "textSelectionMatchCount": inline_props.get("numMatches", 1),
+                        "textSelectionMatchIndex": inline_props.get("matchIndex", 0)
+                    }
+                    # Also add pageId from container
+                    if "container" in modified_comment_data:
+                        modified_comment_data["pageId"] = modified_comment_data["container"].get("id")
 
             # Modify the body value to include processed markdown
             if "body" not in modified_comment_data:
@@ -604,31 +704,57 @@ class CommentsMixin(ConfluenceClient):
                 # If content doesn't appear to be HTML/XML, treat it as markdown
                 content = self.preprocessor.markdown_to_confluence_storage(content)
 
-            # Use the Confluence REST API v2 to update inline comment
+            # Check if this is Confluence Cloud or Server/Data Center
+            is_cloud = self.config.is_cloud
+
+            # Use the Confluence REST API to update inline comment
             from urllib.parse import urljoin
 
             # Construct the inline comment endpoint URL
             base_url = self.config.url
             if not base_url.endswith('/'):
                 base_url += '/'
-            inline_comment_url = urljoin(base_url, f"wiki/api/v2/inline-comments/{comment_id}")
 
-            # Prepare the request body according to Confluence API specification
-            request_body = {
-                "version": {
-                    "number": version_number,
-                    "message": version_message
-                },
-                "body": {
-                    "representation": "storage",
-                    "value": content
-                },
-                "resolved": resolved
-            }
+            if is_cloud:
+                # Confluence Cloud uses API v2
+                inline_comment_url = urljoin(base_url, f"wiki/api/v2/inline-comments/{comment_id}")
+                # Prepare the request body according to Confluence API v2 specification
+                request_body = {
+                    "version": {
+                        "number": version_number,
+                        "message": version_message
+                    },
+                    "body": {
+                        "representation": "storage",
+                        "value": content
+                    },
+                    "resolved": resolved
+                }
+            else:
+                # Confluence Server/Data Center uses API v1
+                inline_comment_url = urljoin(base_url, f"rest/api/content/{comment_id}")
+                # Prepare the request body according to Confluence API v1 specification
+                request_body = {
+                    "version": {
+                        "number": version_number,
+                        "message": version_message
+                    },
+                    "body": {
+                        "storage": {
+                            "value": content,
+                            "representation": "storage"
+                        }
+                    }
+                }
+                # Note: resolved status is not directly supported in API v1 update
 
             # Get authentication headers
             auth = self.confluence._session.auth if hasattr(self.confluence, '_session') else None
             headers = {"Accept": "application/json", "Content-Type": "application/json"}
+
+            # Copy Authorization header from session if it exists (for Personal Access Token auth)
+            if hasattr(self.confluence, '_session') and 'Authorization' in self.confluence._session.headers:
+                headers['Authorization'] = self.confluence._session.headers['Authorization']
 
             # Debug logging
             logger.debug(f"Making PUT request to: {inline_comment_url}")
@@ -689,6 +815,21 @@ class CommentsMixin(ConfluenceClient):
 
             # Modify the response to include processed content
             modified_response = response_data.copy()
+
+            # For Server/Data Center, map extensions.inlineProperties to API v2 format
+            if not is_cloud and "extensions" in modified_response:
+                inline_props = modified_response["extensions"].get("inlineProperties", {})
+                if inline_props:
+                    # Map Server/Data Center format to API v2 format
+                    modified_response["inlineCommentProperties"] = {
+                        "textSelection": inline_props.get("originalSelection", ""),
+                        "textSelectionMatchCount": inline_props.get("numMatches", 1),
+                        "textSelectionMatchIndex": inline_props.get("matchIndex", 0)
+                    }
+                    # Also add pageId from container
+                    if "container" in modified_response:
+                        modified_response["pageId"] = modified_response["container"].get("id")
+
             if "body" not in modified_response:
                 modified_response["body"] = {}
             if "view" not in modified_response["body"]:
@@ -728,18 +869,31 @@ class CommentsMixin(ConfluenceClient):
             True if comment was deleted successfully, False otherwise
         """
         try:
-            # Use the Confluence REST API v2 to delete inline comment
+            # Check if this is Confluence Cloud or Server/Data Center
+            is_cloud = self.config.is_cloud
+
+            # Use the Confluence REST API to delete inline comment
             from urllib.parse import urljoin
 
             # Construct the inline comment endpoint URL
             base_url = self.config.url
             if not base_url.endswith('/'):
                 base_url += '/'
-            inline_comment_url = urljoin(base_url, f"wiki/api/v2/inline-comments/{comment_id}")
+
+            if is_cloud:
+                # Confluence Cloud uses API v2
+                inline_comment_url = urljoin(base_url, f"wiki/api/v2/inline-comments/{comment_id}")
+            else:
+                # Confluence Server/Data Center uses API v1
+                inline_comment_url = urljoin(base_url, f"rest/api/content/{comment_id}")
 
             # Get authentication headers
             auth = self.confluence._session.auth if hasattr(self.confluence, '_session') else None
             headers = {"Accept": "application/json"}
+
+            # Copy Authorization header from session if it exists (for Personal Access Token auth)
+            if hasattr(self.confluence, '_session') and 'Authorization' in self.confluence._session.headers:
+                headers['Authorization'] = self.confluence._session.headers['Authorization']
 
             # Debug logging
             logger.debug(f"Making DELETE request to: {inline_comment_url}")
@@ -797,23 +951,37 @@ class CommentsMixin(ConfluenceClient):
             List of ConfluenceInlineComment models containing child comment content and metadata
         """
         try:
-            # Use the Confluence REST API v2 to get child comments
+            # Check if this is Confluence Cloud or Server/Data Center
+            is_cloud = self.config.is_cloud
+
+            # Use the Confluence REST API to get child comments
             from urllib.parse import urljoin
 
             # Construct the inline comment children endpoint URL
             base_url = self.config.url
             if not base_url.endswith('/'):
                 base_url += '/'
-            children_url = urljoin(base_url, f"wiki/api/v2/inline-comments/{comment_id}/children")
 
-            # Prepare query parameters
-            params = {"limit": limit}
-            if cursor:
-                params["cursor"] = cursor
+            if is_cloud:
+                # Confluence Cloud uses API v2
+                children_url = urljoin(base_url, f"wiki/api/v2/inline-comments/{comment_id}/children")
+                # Prepare query parameters
+                params = {"limit": limit}
+                if cursor:
+                    params["cursor"] = cursor
+            else:
+                # Confluence Server/Data Center uses API v1
+                # Child comments are retrieved using the same endpoint as regular child comments
+                children_url = urljoin(base_url, f"rest/api/content/{comment_id}/child/comment")
+                params = {"expand": "body.view.value,version,extensions.inlineProperties,container"}
 
             # Get authentication headers
             auth = self.confluence._session.auth if hasattr(self.confluence, '_session') else None
             headers = {"Accept": "application/json"}
+
+            # Copy Authorization header from session if it exists (for Personal Access Token auth)
+            if hasattr(self.confluence, '_session') and 'Authorization' in self.confluence._session.headers:
+                headers['Authorization'] = self.confluence._session.headers['Authorization']
 
             # Debug logging
             logger.debug(f"Making GET request to: {children_url}")
@@ -864,6 +1032,22 @@ class CommentsMixin(ConfluenceClient):
 
                     # Create a copy of the comment data to modify
                     modified_comment_data = comment_data.copy()
+
+                    # For Server/Data Center, map extensions.inlineProperties to API v2 format
+                    if not is_cloud and "extensions" in modified_comment_data:
+                        inline_props = modified_comment_data["extensions"].get("inlineProperties", {})
+                        if inline_props:
+                            # Map Server/Data Center format to API v2 format
+                            modified_comment_data["inlineCommentProperties"] = {
+                                "textSelection": inline_props.get("originalSelection", ""),
+                                "textSelectionMatchCount": inline_props.get("numMatches", 1),
+                                "textSelectionMatchIndex": inline_props.get("matchIndex", 0)
+                            }
+                            # Also add pageId from container
+                            if "container" in modified_comment_data:
+                                modified_comment_data["pageId"] = modified_comment_data["container"].get("id")
+                        # Set parent comment ID for Server/Data Center
+                        modified_comment_data["parentCommentId"] = comment_id
 
                     # Modify the body value based on the return format
                     if "body" not in modified_comment_data:
