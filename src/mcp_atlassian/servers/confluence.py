@@ -1065,3 +1065,58 @@ async def search_user(
             indent=2,
             ensure_ascii=False,
         )
+
+
+@confluence_mcp.tool(tags={"confluence", "read"})
+async def download_attachments(
+    page_id: str,
+    target_dir: str,
+    media_type_filter: str | None = None,
+    only_used_in_content: bool = True,
+) -> str:
+    """Download attachments from a Confluence page.
+
+    Args:
+        page_id: Confluence page ID (numeric ID, can be parsed from URL, e.g. from 'https://example.atlassian.net/wiki/spaces/TEAM/pages/123456789/Page+Title' -> '123456789')
+        target_dir: Directory where attachments should be saved
+        media_type_filter: Optional media type filter (e.g., 'image/' for all images, 'image/png' for PNG only)
+        only_used_in_content: If True (default), only download attachments that are actually referenced in the latest page content. Set to False to download all attachments.
+
+    Returns:
+        JSON string indicating the result of the download operation with details about downloaded files
+    """
+    logger.info(
+        f"Downloading attachments for page {page_id} to {target_dir}"
+        + (f" (filter: {media_type_filter})" if media_type_filter else "")
+        + (f" (only used: {only_used_in_content})" if not only_used_in_content else " (only used in content)")
+    )
+
+    try:
+        result = confluence_fetcher.download_page_attachments(
+            page_id=page_id,
+            target_dir=target_dir,
+            media_type_filter=media_type_filter,
+            only_used_in_content=only_used_in_content,
+        )
+        return json.dumps(result, indent=2, ensure_ascii=False)
+    except MCPAtlassianAuthenticationError as e:
+        logger.error(f"Authentication error during attachment download: {e}", exc_info=False)
+        return json.dumps(
+            {
+                "success": False,
+                "error": "Authentication failed. Please check your credentials.",
+                "details": str(e),
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    except Exception as e:
+        logger.error(f"Error downloading attachments: {str(e)}")
+        return json.dumps(
+            {
+                "success": False,
+                "error": f"An unexpected error occurred while downloading attachments: {str(e)}",
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
