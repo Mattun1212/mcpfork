@@ -1,4 +1,4 @@
-# MCP Atlassian
+# MCP Atlassian - Extended Edition
 
 ![PyPI Version](https://img.shields.io/pypi/v/mcp-atlassian)
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/mcp-atlassian)
@@ -8,6 +8,8 @@
 
 Model Context Protocol (MCP) server for Atlassian products (Confluence and Jira). This integration supports both Confluence & Jira Cloud and Server/Data Center deployments.
 
+> **Note**: This is an extended version of the [original mcp-atlassian](https://github.com/sooperset/mcp-atlassian) with additional features and enhancements. See [Extended Features](#extended-features) section for details.
+
 ## Example Usage
 
 Ask your AI assistant to:
@@ -16,6 +18,8 @@ Ask your AI assistant to:
 - **🔍 AI-Powered Confluence Search** - "Find our OKR guide in Confluence and summarize it"
 - **🐛 Smart Jira Issue Filtering** - "Show me urgent bugs in PROJ project from last week"
 - **📄 Content Creation & Management** - "Create a tech design doc for XYZ feature"
+- **💬 Inline Document Review** - "Add review comments to the third paragraph of the API documentation"
+- **📎 Attachment Management** - "Download all attachments from PROJ-123 to review offline"
 
 ### Feature Demo
 
@@ -27,14 +31,18 @@ https://github.com/user-attachments/assets/7fe9c488-ad0c-4876-9b54-120b666bb785
 
 </details>
 
+> **💡 Tip**: This extended version includes additional features like inline comments and attachment downloads. See [Extended Features](#extended-features) for details.
+
 ### Compatibility
 
-| Product        | Deployment Type    | Support Status              |
-|----------------|--------------------|-----------------------------|
-| **Confluence** | Cloud              | ✅ Fully supported           |
-| **Confluence** | Server/Data Center | ✅ Supported (version 6.0+)  |
-| **Jira**       | Cloud              | ✅ Fully supported           |
-| **Jira**       | Server/Data Center | ✅ Supported (version 8.14+) |
+| Product        | Deployment Type    | Support Status              | Extended Features |
+|----------------|--------------------|-----------------------------|-------------------|
+| **Confluence** | Cloud              | ✅ Fully supported           | ✅ All features    |
+| **Confluence** | Server/Data Center | ✅ Supported (version 6.0+)  | ✅ All features    |
+| **Jira**       | Cloud              | ✅ Fully supported           | ✅ All features    |
+| **Jira**       | Server/Data Center | ✅ Supported (version 8.14+) | ✅ All features    |
+
+**Note**: Extended features (inline comments, attachment downloads) are tested and compatible with both Cloud and Server/Data Center deployments.
 
 ## Quick Start Guide
 
@@ -113,9 +121,30 @@ This option is useful in scenarios where OAuth credential management is centrali
 
 MCP Atlassian is distributed as a Docker image. This is the recommended way to run the server, especially for IDE integration. Ensure you have Docker installed.
 
+**For the original version:**
 ```bash
 # Pull Pre-built Image
 docker pull ghcr.io/sooperset/mcp-atlassian:latest
+```
+
+**For this extended version:**
+```bash
+# Build from source
+git clone <this-repository-url>
+cd mcp-atlassian
+docker build -t mcp-atlassian:extended .
+
+# Or for Windows executable build
+docker build -f Dockerfile.windows-builder -t mcp-atlassian:windows-builder .
+```
+
+**Running locally without Docker:**
+```bash
+# Install dependencies
+uv sync --frozen --all-extras
+
+# Run the server
+uv run mcp-atlassian
 ```
 
 ## 🛠️ IDE Integration
@@ -740,44 +769,104 @@ Here's a complete example of setting up multi-user authentication with streamabl
 
 <details> <summary>View All Tools</summary>
 
-| Operation | Jira Tools                          | Confluence Tools               |
-|-----------|-------------------------------------|--------------------------------|
-| **Read**  | `jira_search`                       | `confluence_search`            |
-|           | `jira_get_issue`                    | `confluence_get_page`          |
-|           | `jira_get_all_projects`             | `confluence_get_page_children` |
-|           | `jira_get_project_issues`           | `confluence_get_comments`      |
-|           | `jira_get_worklog`                  | `confluence_get_labels`        |
-|           | `jira_get_transitions`              | `confluence_search_user`       |
-|           | `jira_search_fields`                |                                |
-|           | `jira_get_agile_boards`             |                                |
-|           | `jira_get_board_issues`             |                                |
-|           | `jira_get_sprints_from_board`       |                                |
-|           | `jira_get_sprint_issues`            |                                |
-|           | `jira_get_issue_link_types`         |                                |
-|           | `jira_batch_get_changelogs`*        |                                |
-|           | `jira_get_user_profile`             |                                |
-|           | `jira_download_attachments`         |                                |
-|           | `jira_get_project_versions`         |                                |
-| **Write** | `jira_create_issue`                 | `confluence_create_page`       |
-|           | `jira_update_issue`                 | `confluence_update_page`       |
-|           | `jira_delete_issue`                 | `confluence_delete_page`       |
-|           | `jira_batch_create_issues`          | `confluence_add_label`         |
-|           | `jira_add_comment`                  | `confluence_add_comment`       |
-|           | `jira_transition_issue`             |                                |
-|           | `jira_add_worklog`                  |                                |
-|           | `jira_link_to_epic`                 |                                |
-|           | `jira_create_sprint`                |                                |
-|           | `jira_update_sprint`                |                                |
-|           | `jira_create_issue_link`            |                                |
-|           | `jira_remove_issue_link`            |                                |
-|           | `jira_create_version`               |                                |
-|           | `jira_batch_create_versions`        |                                |
+| Operation | Jira Tools                          | Confluence Tools                        |
+|-----------|-------------------------------------|-----------------------------------------|
+| **Read**  | `jira_search`                       | `confluence_search`                     |
+|           | `jira_get_issue`                    | `confluence_get_page`                   |
+|           | `jira_get_all_projects`             | `confluence_get_page_children`          |
+|           | `jira_get_project_issues`           | `confluence_get_comments`               |
+|           | `jira_get_worklog`                  | `confluence_get_labels`                 |
+|           | `jira_get_transitions`              | `confluence_search_user`                |
+|           | `jira_search_fields`                | `confluence_get_inline_comments`† |
+|           | `jira_get_agile_boards`             | `confluence_get_inline_comment_by_id`† |
+|           | `jira_get_board_issues`             | `confluence_get_inline_comment_children`† |
+|           | `jira_get_sprints_from_board`       | `confluence_download_attachments`† |
+|           | `jira_get_sprint_issues`            |                                         |
+|           | `jira_get_issue_link_types`         |                                         |
+|           | `jira_batch_get_changelogs`*        |                                         |
+|           | `jira_get_user_profile`             |                                         |
+|           | `jira_download_attachments`†   |                                         |
+|           | `jira_get_project_versions`         |                                         |
+| **Write** | `jira_create_issue`                 | `confluence_create_page`                |
+|           | `jira_update_issue`                 | `confluence_update_page`                |
+|           | `jira_delete_issue`                 | `confluence_delete_page`                |
+|           | `jira_batch_create_issues`          | `confluence_add_label`                  |
+|           | `jira_add_comment`                  | `confluence_add_comment`                |
+|           | `jira_transition_issue`             | `confluence_add_inline_comment`†   |
+|           | `jira_add_worklog`                  | `confluence_update_inline_comment`† |
+|           | `jira_link_to_epic`                 | `confluence_delete_inline_comment`† |
+|           | `jira_create_sprint`                |                                         |
+|           | `jira_update_sprint`                |                                         |
+|           | `jira_create_issue_link`            |                                         |
+|           | `jira_remove_issue_link`            |                                         |
+|           | `jira_create_version`               |                                         |
+|           | `jira_batch_create_versions`        |                                         |
+
+**Legend:**
+- `*` Tool only available on Jira Cloud
+- `†` Extended feature (not in original mcp-atlassian)
 
 </details>
 
-*Tool only available on Jira Cloud
+## Extended Features
 
-</details>
+This extended version includes additional tools and capabilities beyond the original mcp-atlassian:
+
+### Confluence Inline Comments
+
+Full CRUD operations for Confluence inline comments, supporting both Cloud and Server/Data Center deployments:
+
+| Tool | Description | Tags |
+|------|-------------|------|
+| `confluence_get_inline_comments` | Get all inline comments for a specific page | read |
+| `confluence_add_inline_comment` | Add a new inline comment to a page with automatic text matching | write |
+| `confluence_get_inline_comment_by_id` | Retrieve a specific inline comment by its ID | read |
+| `confluence_update_inline_comment` | Update the content of an existing inline comment | write |
+| `confluence_delete_inline_comment` | Delete an inline comment | write |
+| `confluence_get_inline_comment_children` | Get all child comments (replies) of a specific inline comment | read |
+
+**Key Features:**
+- **Automatic Text Matching**: When adding inline comments, the system automatically locates the specified text in the page content
+- **Server/DC Support**: Includes special retry logic and compatibility layer for Confluence Server/Data Center
+- **Gliffy Diagram Detection**: Automatically detects and handles Gliffy diagrams in page content
+- **API v2 Support**: Leverages the latest Confluence API v2 for enhanced functionality
+
+**Example Use Cases:**
+- Add review comments directly to specific paragraphs in documentation
+- Create threaded discussions on specific content sections
+- Automate document review workflows with inline feedback
+
+**Usage Example:**
+```python
+# Ask your AI assistant:
+"Add an inline comment to the paragraph that starts with 'Authentication Setup'
+in the API documentation page, asking if we need to mention OAuth 2.0"
+
+# The system will:
+# 1. Find the page
+# 2. Locate the specified text
+# 3. Add the inline comment automatically
+```
+
+### Attachment Management
+
+Enhanced attachment handling for both Confluence and Jira:
+
+| Tool | Product | Description | Tags |
+|------|---------|-------------|------|
+| `confluence_download_attachments` | Confluence | Download all attachments from a specific page | read |
+| `jira_download_attachments` | Jira | Download all attachments from a specific issue | read |
+
+**Features:**
+- Batch download of all attachments
+- Automatic file naming and organization
+- Support for various file types and sizes
+
+### Additional Enhancements
+
+- **Windows Executable Build**: Docker-based build system for creating Windows executables using Wine
+- **Enhanced Error Handling**: Improved error messages and retry logic for Confluence Server/Data Center
+- **Better Logging**: Enhanced debug logging for troubleshooting authentication and API interactions
 
 ### Tool Filtering and Access Control
 
@@ -865,15 +954,67 @@ type %APPDATA%\Claude\logs\mcp*.log | more
 - Keep .env files secure and private
 - See [SECURITY.md](SECURITY.md) for best practices
 
-## Contributing
+## Development & Contribution
 
-We welcome contributions to MCP Atlassian! If you'd like to contribute:
+### About This Extended Version
 
-1. Check out our [CONTRIBUTING.md](CONTRIBUTING.md) guide for detailed development setup instructions.
-2. Make changes and submit a pull request.
+This is a fork of the original [sooperset/mcp-atlassian](https://github.com/sooperset/mcp-atlassian) with additional features developed to support advanced Confluence and Jira workflows. The extensions maintain full compatibility with the original project's architecture and follow the same development standards.
+
+**Repository Information:**
+- **Original Project**: [sooperset/mcp-atlassian](https://github.com/sooperset/mcp-atlassian)
+- **Extended Fork**: This repository includes additional inline comment features, attachment management, and other enhancements
+
+### Contributing to This Fork
+
+We welcome contributions to this extended version! If you'd like to contribute:
+
+1. Check out the [CONTRIBUTING.md](CONTRIBUTING.md) guide for detailed development setup instructions
+2. Review [AGENTS.md](AGENTS.md) for repository structure and development guidelines
+3. Ensure all tests pass and code follows our pre-commit hooks
+4. Submit a pull request with a clear description of your changes
+
+**Development Quick Start:**
+
+```bash
+# Install dependencies
+uv sync --frozen --all-extras --dev
+
+# Setup pre-commit hooks
+pre-commit install
+
+# Run tests
+uv run pytest
+
+# Run linting
+pre-commit run --all-files
+```
+
+### Contributing to the Original Project
+
+For contributions to the upstream mcp-atlassian project, please visit:
+- **Repository**: https://github.com/sooperset/mcp-atlassian
+- **Contributing Guide**: https://github.com/sooperset/mcp-atlassian/blob/main/CONTRIBUTING.md
 
 We use pre-commit hooks for code quality and follow semantic versioning for releases.
+
+## Project Information
+
+### Relationship to Original Project
+
+This project is an extended fork of [sooperset/mcp-atlassian](https://github.com/sooperset/mcp-atlassian). We maintain the core functionality and architecture of the original project while adding features that support specific use cases, particularly around document review workflows and attachment management.
+
+**Key Differences:**
+- ✅ **Fully Compatible**: All original features work exactly as documented
+- ✅ **Additional Tools**: Extra tools for inline comments and attachments
+- ✅ **Enhanced Support**: Improved Server/Data Center compatibility
+- ✅ **Same Standards**: Follows the same development practices and code quality standards
+
+### Acknowledgments
+
+We are grateful to the original mcp-atlassian project maintainers and contributors. This extended version builds upon their excellent work to provide additional capabilities while maintaining the project's core principles and quality.
 
 ## License
 
 Licensed under MIT - see [LICENSE](LICENSE) file. This is not an official Atlassian product.
+
+**Original Project**: [sooperset/mcp-atlassian](https://github.com/sooperset/mcp-atlassian) - Licensed under MIT
