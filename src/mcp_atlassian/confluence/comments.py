@@ -84,7 +84,7 @@ class CommentsMixin(ConfluenceClient):
             return []
         except Exception as e:  # noqa: BLE001 - Intentional fallback with full logging
             logger.error(f"Unexpected error fetching comments: {str(e)}")
-            logger.debug("Full exception details for comments:", exc_info=True)
+            logger.debug("Full exception details for comments", exc_info=True)
             return []
 
     def add_comment(self, page_id: str, content: str) -> ConfluenceComment | None:
@@ -146,7 +146,7 @@ class CommentsMixin(ConfluenceClient):
             return None
         except Exception as e:  # noqa: BLE001 - Intentional fallback with full logging
             logger.error(f"Unexpected error adding comment: {str(e)}")
-            logger.debug("Full exception details for adding comment:", exc_info=True)
+            logger.debug("Full exception details for adding comment", exc_info=True)
             return None
 
     def get_inline_comments(
@@ -317,7 +317,7 @@ class CommentsMixin(ConfluenceClient):
             return []
         except Exception as e:  # noqa: BLE001 - Intentional fallback with full logging
             logger.error(f"Unexpected error fetching inline comments: {str(e)}")
-            logger.debug("Full exception details for inline comments:", exc_info=True)
+            logger.debug("Full exception details for inline comments", exc_info=True)
             return []
 
     def _count_text_matches(self, page_content: str, text_selection: str) -> int:
@@ -539,12 +539,12 @@ class CommentsMixin(ConfluenceClient):
         ) as e:
             error_msg = f"Error processing inline comment data for page {page_id}: {str(e)}"
             logger.error(error_msg)
-            logger.debug("Full exception details for data processing:", exc_info=True)
+            logger.debug("Full exception details for data processing", exc_info=True)
             return None, error_msg
         except Exception as e:  # noqa: BLE001 - Intentional fallback with full logging
             error_msg = f"Unexpected error adding inline comment to page {page_id}: {str(e)}"
             logger.error(error_msg)
-            logger.debug("Full exception details for adding inline comment:", exc_info=True)
+            logger.debug("Full exception details for adding inline comment", exc_info=True)
             return None, error_msg
 
     def get_inline_comment_by_id(self, comment_id: str) -> ConfluenceInlineComment | None:
@@ -674,7 +674,7 @@ class CommentsMixin(ConfluenceClient):
             return None
         except Exception as e:  # noqa: BLE001 - Intentional fallback with full logging
             logger.error(f"Unexpected error fetching inline comment {comment_id}: {str(e)}")
-            logger.debug("Full exception details for fetching inline comment:", exc_info=True)
+            logger.debug("Full exception details for fetching inline comment", exc_info=True)
             return None
 
     def update_inline_comment(
@@ -851,11 +851,11 @@ class CommentsMixin(ConfluenceClient):
             return None
         except (ValueError, TypeError, KeyError) as e:
             logger.error(f"Error processing inline comment update for {comment_id}: {str(e)}")
-            logger.debug("Full exception details for data processing:", exc_info=True)
+            logger.debug("Full exception details for data processing", exc_info=True)
             return None
         except Exception as e:  # noqa: BLE001 - Intentional fallback with full logging
             logger.error(f"Unexpected error updating inline comment {comment_id}: {str(e)}")
-            logger.debug("Full exception details for updating inline comment:", exc_info=True)
+            logger.debug("Full exception details for updating inline comment", exc_info=True)
             return None
 
     def delete_inline_comment(self, comment_id: str) -> bool:
@@ -927,7 +927,7 @@ class CommentsMixin(ConfluenceClient):
             return False
         except Exception as e:  # noqa: BLE001 - Intentional fallback with full logging
             logger.error(f"Unexpected error deleting inline comment {comment_id}: {str(e)}")
-            logger.debug("Full exception details for deleting inline comment:", exc_info=True)
+            logger.debug("Full exception details for deleting inline comment", exc_info=True)
             return False
 
     def get_inline_comment_children(
@@ -1081,9 +1081,9 @@ class CommentsMixin(ConfluenceClient):
             return []
         except (ValueError, TypeError, KeyError) as e:
             logger.error(f"Error processing child comments data for inline comment {comment_id}: {str(e)}")
-            logger.debug("Full exception details for child comments:", exc_info=True)
+            logger.debug("Full exception details for child comments", exc_info=True)
             return []
         except Exception as e:  # noqa: BLE001 - Intentional fallback with full logging
             logger.error(f"Unexpected error fetching child comments for inline comment {comment_id}: {str(e)}")
-            logger.debug("Full exception details for child comments:", exc_info=True)
+            logger.debug("Full exception details for child comments", exc_info=True)
             return []
