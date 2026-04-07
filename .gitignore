@@ -75,3 +75,5 @@ playground/
 
 # Claude
 .claude/
+INSTALL_README.md
+CONTRIBUTING.md
