@@ -30,7 +30,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e .
-          pip install pyinstaller
+          pip install pyinstaller>=6.0.0
 
       - name: Build executable (Unix)
         if: runner.os != 'Windows'
@@ -43,6 +43,10 @@ jobs:
             --hidden-import fastmcp \
             --hidden-import pydantic \
             --hidden-import pydantic_core \
+            --hidden-import pydantic.fields \
+            --hidden-import pydantic._internal._model_construction \
+            --hidden-import pydantic._internal._fields \
+            --hidden-import pydantic_settings \
             --hidden-import trio \
             --hidden-import click \
             --hidden-import beautifulsoup4 \
@@ -56,9 +60,19 @@ jobs:
             --collect-all fastmcp \
             --collect-all pydantic \
             --collect-all mcp \
+            --copy-metadata pydantic \
+            --copy-metadata pydantic_core \
+            --copy-metadata fastmcp \
+            --copy-metadata mcp \
             src/mcp_atlassian/__init__.py
           chmod +x dist/mcp-atlassian
           mv dist/mcp-atlassian dist/mcp-atlassian-mac
+
+      - name: Test executable (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          # Test that the executable can at least show help without crashing
+          dist/mcp-atlassian-mac --help || (echo "Executable failed to run!" && exit 1)
 
       - name: Build executable (Windows)
         if: runner.os == 'Windows'
@@ -71,6 +85,10 @@ jobs:
             --hidden-import fastmcp `
             --hidden-import pydantic `
             --hidden-import pydantic_core `
+            --hidden-import pydantic.fields `
+            --hidden-import pydantic._internal._model_construction `
+            --hidden-import pydantic._internal._fields `
+            --hidden-import pydantic_settings `
             --hidden-import trio `
             --hidden-import click `
             --hidden-import beautifulsoup4 `
@@ -84,8 +102,22 @@ jobs:
             --collect-all fastmcp `
             --collect-all pydantic `
             --collect-all mcp `
+            --copy-metadata pydantic `
+            --copy-metadata pydantic_core `
+            --copy-metadata fastmcp `
+            --copy-metadata mcp `
             src/mcp_atlassian/__init__.py
           Rename-Item dist/mcp-atlassian.exe mcp-atlassian-windows.exe
+
+      - name: Test executable (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          # Test that the executable can at least show help without crashing
+          dist/mcp-atlassian-windows.exe --help
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "Executable failed to run!"
+            exit 1
+          }
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
