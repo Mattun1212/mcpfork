@@ -57,7 +57,7 @@ For complete setup including Python environment and Claude Code configuration, u
    # Mac/Linux
    chmod +x install-mcp-atlassian.sh
    ./install-mcp-atlassian.sh
-   
+
    # Windows (as Administrator)
    Set-ExecutionPolicy Bypass -Scope Process -Force
    .\install-mcp-atlassian.ps1

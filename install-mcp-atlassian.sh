@@ -104,10 +104,18 @@ main() {
     pip install git+https://github.com/Mattun1212/mcpfork.git > /dev/null 2>&1
     echo -e "${GREEN}✓${NC} MCP Atlassian installed"
 
-    # Test installation
+    # Pin pydantic to a compatible version
+    # pydantic 2.12+ introduced a breaking change in FieldInfo that is incompatible with fastmcp 2.3.x
+    echo ""
+    echo -e "${YELLOW}Pinning pydantic to compatible version...${NC}"
+    pip install "pydantic>=2.0,<2.12" > /dev/null 2>&1
+    echo -e "${GREEN}✓${NC} pydantic pinned"
+
+    # Test installation (verifies server can actually start, not just --help)
     echo ""
     echo -e "${YELLOW}Testing installation...${NC}"
-    if .venv/bin/mcp-atlassian --help > /dev/null 2>&1; then
+    if .venv/bin/mcp-atlassian --help > /dev/null 2>&1 && \
+       python3 -c "from mcp_atlassian.servers import main_mcp" > /dev/null 2>&1; then
         echo -e "${GREEN}✓${NC} Installation successful!"
     else
         echo -e "${RED}✗${NC} Installation test failed"
@@ -164,8 +172,8 @@ if home_dir not in config['projects']:
 if 'mcpServers' not in config['projects'][home_dir]:
     config['projects'][home_dir]['mcpServers'] = {}
 
-# Add or update AIPRDReviewer
-config['projects'][home_dir]['mcpServers']['AIPRDReviewer'] = {
+# Add or update mcp-atlassian-mutton
+config['projects'][home_dir]['mcpServers']['mcp-atlassian-mutton'] = {
     "type": "stdio",
     "command": "$VENV_PATH",
     "args": [
@@ -197,7 +205,7 @@ EOF
     echo "Next steps:"
     echo "  1. Restart Claude Code"
     echo "  2. Run: /mcp"
-    echo "  3. Verify 'AIPRDReviewer' is connected"
+    echo "  3. Verify 'mcp-atlassian-mutton' is connected"
     echo ""
     echo "Installation location: $MCP_DIR"
     echo ""

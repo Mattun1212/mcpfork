@@ -13,8 +13,9 @@ Key models:
 """
 
 from .analytics import PageViews, PageViewsBatchResponse
-from .comment import ConfluenceComment, ConfluenceInlineComment
+from .comment import ConfluenceComment
 from .common import ConfluenceAttachment, ConfluenceUser
+from .inline_comment import ConfluenceInlineComment
 from .label import ConfluenceLabel
 from .page import ConfluencePage, ConfluenceVersion
 from .search import ConfluenceSearchResult

@@ -963,13 +963,20 @@ async def add_inline_comment(
         str, Field(description="The text that was selected for the inline comment")
     ],
     text_selection_match_count: Annotated[
-        int | None, Field(description="How many matches of the text exist (if None, will be auto-detected)", ge=1)
+        int | None,
+        Field(
+            description="How many matches of the text exist (if None, will be auto-detected)",
+            ge=1,
+        ),
     ] = None,
     text_selection_match_index: Annotated[
         int, Field(description="Which match to target (0-based, default: 0)", ge=0)
     ] = 0,
     auto_detect_matches: Annotated[
-        bool, Field(description="Whether to automatically detect the number of matches (default: True)")
+        bool,
+        Field(
+            description="Whether to automatically detect the number of matches (default: True)"
+        ),
     ] = True,
 ) -> str:
     """Add an inline comment to a Confluence page.
@@ -997,7 +1004,7 @@ async def add_inline_comment(
             text_selection=text_selection,
             text_selection_match_count=text_selection_match_count,
             text_selection_match_index=text_selection_match_index,
-            auto_detect_matches=auto_detect_matches
+            auto_detect_matches=auto_detect_matches,
         )
         if inline_comment:
             comment_data = inline_comment.to_simplified_dict()
@@ -1013,7 +1020,9 @@ async def add_inline_comment(
                 "error_details": error_message,
             }
     except Exception as e:
-        logger.error(f"Error adding inline comment to Confluence page {page_id}: {str(e)}")
+        logger.error(
+            f"Error adding inline comment to Confluence page {page_id}: {str(e)}"
+        )
         response = {
             "success": False,
             "message": f"Error adding inline comment to page {page_id}: {str(e)}",
@@ -1078,7 +1087,8 @@ async def update_inline_comment(
         str, Field(description="The new content of the comment in Markdown format")
     ],
     version_number: Annotated[
-        int, Field(description="Current version number (required for optimistic locking)")
+        int,
+        Field(description="Current version number (required for optimistic locking)"),
     ],
     version_message: Annotated[
         str, Field(description="Optional message for this version")
@@ -1110,7 +1120,7 @@ async def update_inline_comment(
             content=content,
             version_number=version_number,
             version_message=version_message,
-            resolved=resolved
+            resolved=resolved,
         )
         if inline_comment:
             comment_data = inline_comment.to_simplified_dict()
@@ -1186,10 +1196,16 @@ async def get_inline_comment_children(
         str, Field(description="The ID of the parent inline comment")
     ],
     return_markdown: Annotated[
-        bool, Field(description="Whether to return content in markdown format (true) or HTML (false)")
+        bool,
+        Field(
+            description="Whether to return content in markdown format (true) or HTML (false)"
+        ),
     ] = True,
     limit: Annotated[
-        int, Field(description="Maximum number of child comments to return (1-50)", ge=1, le=50)
+        int,
+        Field(
+            description="Maximum number of child comments to return (1-50)", ge=1, le=50
+        ),
     ] = 25,
     cursor: Annotated[
         str | None, Field(description="Cursor for pagination (optional)")
@@ -1213,7 +1229,7 @@ async def get_inline_comment_children(
             comment_id=comment_id,
             return_markdown=return_markdown,
             limit=limit,
-            cursor=cursor
+            cursor=cursor,
         )
 
         # Convert comments to simplified format
@@ -1226,13 +1242,15 @@ async def get_inline_comment_children(
             "success": True,
             "comment_id": comment_id,
             "child_comments": formatted_comments,
-            "count": len(formatted_comments)
+            "count": len(formatted_comments),
         }
 
         return json.dumps(response, indent=2, ensure_ascii=False)
 
     except Exception as e:
-        logger.error(f"Error fetching child comments for inline comment {comment_id}: {str(e)}")
+        logger.error(
+            f"Error fetching child comments for inline comment {comment_id}: {str(e)}"
+        )
         response = {
             "success": False,
             "message": f"Error fetching child comments for inline comment {comment_id}",
@@ -1403,7 +1421,11 @@ async def download_attachments(
     logger.info(
         f"Downloading attachments for page {page_id} to {target_dir}"
         + (f" (filter: {media_type_filter})" if media_type_filter else "")
-        + (f" (only used: {only_used_in_content})" if not only_used_in_content else " (only used in content)")
+        + (
+            f" (only used: {only_used_in_content})"
+            if not only_used_in_content
+            else " (only used in content)"
+        )
     )
 
     confluence_fetcher = await get_confluence_fetcher(ctx)
@@ -1417,7 +1439,9 @@ async def download_attachments(
         )
         return json.dumps(result, indent=2, ensure_ascii=False)
     except MCPAtlassianAuthenticationError as e:
-        logger.error(f"Authentication error during attachment download: {e}", exc_info=False)
+        logger.error(
+            f"Authentication error during attachment download: {e}", exc_info=False
+        )
         return json.dumps(
             {
                 "success": False,
