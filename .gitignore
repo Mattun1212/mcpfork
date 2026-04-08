@@ -29,6 +29,7 @@ MANIFEST
 # Environments
 .env
 .env.*
+!tests/e2e/docker/.env.example
 .venv
 env/
 venv/
@@ -77,3 +78,6 @@ playground/
 .claude/
 INSTALL_README.md
 CONTRIBUTING.md
+
+# Dev docs (local task documents)
+dev/
