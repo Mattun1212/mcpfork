@@ -65,7 +65,7 @@ class InlineCommentsMixin(ConfluenceClient):
                 # Confluence Server/Data Center uses API v1
                 # Include metadata.properties to retrieve resolution status
                 inline_comments_url = urljoin(base_url, f"rest/api/content/{page_id}/child/comment")
-                params = {"expand": "body.view.value,version,extensions.inlineProperties,metadata.properties"}
+                params = {"expand": "body.view.value,version,extensions.inlineProperties,extensions.resolution,metadata.properties"}
 
             # Make the request with retry logic for rate limiting
             max_retries = 3
@@ -445,7 +445,7 @@ class InlineCommentsMixin(ConfluenceClient):
             else:
                 # Confluence Server/Data Center uses API v1
                 inline_comment_url = urljoin(base_url, f"rest/api/content/{comment_id}")
-                params = {"expand": "body.view.value,version,extensions.inlineProperties,container,metadata.properties"}
+                params = {"expand": "body.view.value,version,extensions.inlineProperties,extensions.resolution,container,metadata.properties"}
 
             # Get authentication headers
             auth = self.confluence._session.auth if hasattr(self.confluence, '_session') else None
@@ -826,7 +826,7 @@ class InlineCommentsMixin(ConfluenceClient):
                 # Confluence Server/Data Center uses API v1
                 # Child comments are retrieved using the same endpoint as regular child comments
                 children_url = urljoin(base_url, f"rest/api/content/{comment_id}/child/comment")
-                params = {"expand": "body.view.value,version,extensions.inlineProperties,container,metadata.properties"}
+                params = {"expand": "body.view.value,version,extensions.inlineProperties,extensions.resolution,container,metadata.properties"}
 
             # Get authentication headers
             auth = self.confluence._session.auth if hasattr(self.confluence, '_session') else None
