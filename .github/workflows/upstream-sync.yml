@@ -1,0 +1,211 @@
+# .github/workflows/upstream-sync.yml
+#
+# Periodically checks sooperset/mcp-atlassian for new commits and
+# opens a pull request to merge them into this fork's main branch.
+#
+# Outcomes:
+#   - No upstream changes  → job exits silently
+#   - Clean merge           → opens a ready-to-review PR
+#   - Merge conflict        → opens a DRAFT PR with resolution instructions
+
+name: Sync from Upstream
+
+on:
+  schedule:
+    - cron: '0 1 * * 1'  # Every Monday at 01:00 UTC (10:00 JST)
+  workflow_dispatch:       # Allow manual trigger
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout fork
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/sooperset/mcp-atlassian.git
+          git fetch upstream
+
+      # ── Check if upstream has anything new ──────────────────────────────
+      - name: Check for new upstream commits
+        id: check
+        run: |
+          COUNT=$(git log --oneline HEAD..upstream/main | wc -l | tr -d ' ')
+          LATEST=$(git log --oneline upstream/main -1)
+          echo "upstream_commits=$COUNT"     >> "$GITHUB_OUTPUT"
+          echo "latest_commit=$LATEST"       >> "$GITHUB_OUTPUT"
+          if [ "$COUNT" -gt "0" ]; then
+            echo "has_updates=true"          >> "$GITHUB_OUTPUT"
+            echo "::notice::$COUNT new upstream commit(s) found."
+          else
+            echo "has_updates=false"         >> "$GITHUB_OUTPUT"
+            echo "::notice::Fork is already up-to-date with upstream."
+          fi
+
+      # ── Skip everything below when there is nothing to sync ─────────────
+      - name: Check for existing open sync PR
+        if: steps.check.outputs.has_updates == 'true'
+        id: existing_pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          COUNT=$(gh pr list \
+            --repo "${{ github.repository }}" \
+            --head "sync/upstream-" \
+            --state open \
+            --json number \
+            --jq 'length')
+          echo "open_prs=$COUNT" >> "$GITHUB_OUTPUT"
+          if [ "$COUNT" -gt "0" ]; then
+            echo "::notice::An open sync PR already exists — skipping new branch creation."
+          fi
+
+      - name: Create sync branch
+        if: |
+          steps.check.outputs.has_updates == 'true' &&
+          steps.existing_pr.outputs.open_prs == '0'
+        id: branch
+        run: |
+          BRANCH="sync/upstream-$(date +%Y%m%d)"
+          git checkout -b "$BRANCH"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+
+      # ── Attempt automatic merge ──────────────────────────────────────────
+      - name: Attempt merge
+        if: |
+          steps.check.outputs.has_updates == 'true' &&
+          steps.existing_pr.outputs.open_prs == '0'
+        id: merge
+        run: |
+          if git merge upstream/main --no-edit; then
+            echo "status=success" >> "$GITHUB_OUTPUT"
+            echo "::notice::Merge succeeded with no conflicts."
+          else
+            echo "status=conflict" >> "$GITHUB_OUTPUT"
+            # Capture conflicting file list before aborting
+            {
+              echo "conflicts<<EOF"
+              git diff --name-only --diff-filter=U
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+            echo "::warning::Merge has conflicts. Aborting — branch will be pushed pre-merge."
+            git merge --abort
+          fi
+
+      - name: Push branch
+        if: |
+          steps.check.outputs.has_updates == 'true' &&
+          steps.existing_pr.outputs.open_prs == '0'
+        run: |
+          git push origin "${{ steps.branch.outputs.branch }}"
+
+      # ── Open PR: clean merge ─────────────────────────────────────────────
+      - name: Create PR (clean merge)
+        if: |
+          steps.check.outputs.has_updates == 'true' &&
+          steps.existing_pr.outputs.open_prs == '0' &&
+          steps.merge.outputs.status == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch  = '${{ steps.branch.outputs.branch }}';
+            const count   = '${{ steps.check.outputs.upstream_commits }}';
+            const latest  = `${{ steps.check.outputs.latest_commit }}`;
+            const runUrl  = `${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
+
+            const { data: pr } = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              title: `chore: sync ${count} upstream commit(s) — ${new Date().toISOString().slice(0,10)}`,
+              head:  branch,
+              base:  'main',
+              body: [
+                '## Upstream Sync',
+                '',
+                `Automatic sync of **${count}** new commit(s) from ` +
+                '[sooperset/mcp-atlassian](https://github.com/sooperset/mcp-atlassian).',
+                '',
+                `Latest upstream commit: \`${latest}\``,
+                '',
+                '| | Status |',
+                '|---|---|',
+                '| Merge | ✅ Clean (no conflicts) |',
+                `| Tests | CI will run automatically on this PR |`,
+                '',
+                '> Review the diff, confirm CI passes, then merge.',
+                '',
+                `[Workflow run](${runUrl})`,
+              ].join('\n'),
+            });
+            console.log(`Created PR #${pr.number}: ${pr.html_url}`);
+
+      # ── Open PR: conflicts detected ──────────────────────────────────────
+      - name: Create PR (conflict — manual resolution needed)
+        if: |
+          steps.check.outputs.has_updates == 'true' &&
+          steps.existing_pr.outputs.open_prs == '0' &&
+          steps.merge.outputs.status == 'conflict'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const branch    = '${{ steps.branch.outputs.branch }}';
+            const count     = '${{ steps.check.outputs.upstream_commits }}';
+            const latest    = `${{ steps.check.outputs.latest_commit }}`;
+            const conflicts = `${{ steps.merge.outputs.conflicts }}`;
+            const runUrl    = `${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
+
+            const { data: pr } = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              title: `🔧 chore: sync upstream — manual conflict resolution needed`,
+              head:  branch,
+              base:  'main',
+              draft: true,
+              body: [
+                '## Upstream Sync — Manual Resolution Required',
+                '',
+                `**${count}** new commit(s) from upstream, but the merge has conflicts.`,
+                '',
+                `Latest upstream commit: \`${latest}\``,
+                '',
+                '### Conflicting files',
+                '```',
+                conflicts,
+                '```',
+                '',
+                '### How to resolve',
+                '```bash',
+                '# 1. Checkout the sync branch',
+                `git fetch origin && git checkout ${branch}`,
+                '',
+                '# 2. Merge upstream and resolve conflicts',
+                'git remote add upstream https://github.com/sooperset/mcp-atlassian.git 2>/dev/null || true',
+                'git fetch upstream',
+                'git merge upstream/main',
+                '# → resolve each conflict in your editor',
+                '',
+                '# 3. Run tests',
+                'uv run pytest tests/unit/ -q',
+                '',
+                '# 4. Push',
+                `git push origin ${branch}`,
+                '```',
+                '',
+                `[Workflow run](${runUrl})`,
+              ].join('\n'),
+            });
+            console.log(`Created draft PR #${pr.number}: ${pr.html_url}`);
