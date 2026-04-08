@@ -8,7 +8,9 @@ from .attachments import AttachmentsMixin
 from .client import ConfluenceClient
 from .comments import CommentsMixin
 from .config import ConfluenceConfig
+from .inline_comments import InlineCommentsMixin
 from .labels import LabelsMixin
+from .page_attachments import PageAttachmentsMixin
 from .pages import PagesMixin
 from .search import SearchMixin
 from .spaces import SpacesMixin
@@ -20,10 +22,12 @@ class ConfluenceFetcher(
     SpacesMixin,
     PagesMixin,
     CommentsMixin,
+    InlineCommentsMixin,
     LabelsMixin,
     UsersMixin,
     AnalyticsMixin,
     AttachmentsMixin,
+    PageAttachmentsMixin,
 ):
     """Main entry point for Confluence operations, providing backward compatibility.
 
@@ -35,10 +39,12 @@ class ConfluenceFetcher(
     - SpacesMixin: Space operations
     - PagesMixin: Page operations
     - CommentsMixin: Comment operations
+    - InlineCommentsMixin: Inline comment operations (fork-specific)
     - LabelsMixin: Label operations
     - UsersMixin: User operations
     - AnalyticsMixin: Page view analytics (Cloud only)
     - AttachmentsMixin: Attachment operations
+    - PageAttachmentsMixin: Page attachment download operations (fork-specific)
     """
 
     pass
@@ -49,4 +55,6 @@ __all__ = [
     "ConfluenceConfig",
     "ConfluenceClient",
     "AnalyticsMixin",
+    "InlineCommentsMixin",
+    "PageAttachmentsMixin",
 ]

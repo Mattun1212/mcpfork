@@ -78,8 +78,49 @@ function Install-Python {
     }
 }
 
+# Check if Git is installed
+function Check-Git {
+    try {
+        $null = & git --version 2>&1
+        Write-Host "[✓] Git found" -ForegroundColor Green
+        return $true
+    } catch {
+        # Git not found
+    }
+    return $false
+}
+
+# Install Git
+function Install-Git {
+    Write-Host "[!] Git not found. Installing..." -ForegroundColor Yellow
+
+    # Try winget first
+    try {
+        $null = Get-Command winget -ErrorAction Stop
+        Write-Host "[!] Installing Git via winget..." -ForegroundColor Yellow
+        winget install Git.Git --silent --accept-package-agreements --accept-source-agreements
+
+        # Refresh PATH
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+
+        Write-Host "[✓] Git installed successfully" -ForegroundColor Green
+        Write-Host "[!] Please restart PowerShell and run this script again" -ForegroundColor Yellow
+        exit 0
+    } catch {
+        Write-Host "[✗] winget not available. Please install Git manually:" -ForegroundColor Red
+        Write-Host "  https://git-scm.com/download/win" -ForegroundColor Yellow
+        Write-Host "  インストール後、PowerShellを再起動してスクリプトを再実行してください" -ForegroundColor Yellow
+        exit 1
+    }
+}
+
 # Main installation
 function Main {
+    # Check/Install Git (required for pip install git+https://...)
+    if (-not (Check-Git)) {
+        Install-Git
+    }
+
     # Check/Install Python
     if (-not (Check-Python)) {
         Install-Python
@@ -122,12 +163,20 @@ function Main {
     pip install git+https://github.com/Mattun1212/mcpfork.git | Out-Null
     Write-Host "[✓] MCP Atlassian installed" -ForegroundColor Green
 
-    # Test installation
+    # Pin pydantic to a compatible version
+    # pydantic 2.12+ introduced a breaking change in FieldInfo that is incompatible with fastmcp 2.3.x
+    Write-Host ""
+    Write-Host "[!] Pinning pydantic to compatible version..." -ForegroundColor Yellow
+    pip install "pydantic>=2.0,<2.12" | Out-Null
+    Write-Host "[✓] pydantic pinned" -ForegroundColor Green
+
+    # Test installation (verifies server can actually start, not just --help)
     Write-Host ""
     Write-Host "[!] Testing installation..." -ForegroundColor Yellow
     $mcpExe = Join-Path $mcpDir ".venv\Scripts\mcp-atlassian.exe"
     if (Test-Path $mcpExe) {
         & $mcpExe --help | Out-Null
+        python -c "from mcp_atlassian.servers import main_mcp" 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) {
             Write-Host "[✓] Installation successful!" -ForegroundColor Green
         } else {
@@ -189,7 +238,7 @@ function Main {
         $config.projects.$homeDir | Add-Member -NotePropertyName "mcpServers" -NotePropertyValue @{} -Force
     }
 
-    # Add or update AIPRDReviewer
+    # Add or update mcp-atlassian-mutton
     $mcpConfig = @{
         type = "stdio"
         command = $venvPath
@@ -205,7 +254,7 @@ function Main {
         }
     }
 
-    $config.projects.$homeDir.mcpServers | Add-Member -NotePropertyName "AIPRDReviewer" -NotePropertyValue $mcpConfig -Force
+    $config.projects.$homeDir.mcpServers | Add-Member -NotePropertyName "mcp-atlassian-mutton" -NotePropertyValue $mcpConfig -Force
 
     # Save JSON
     $config | ConvertTo-Json -Depth 10 | Set-Content $claudeJsonPath -Encoding UTF8
@@ -221,7 +270,7 @@ function Main {
     Write-Host "Next steps:" -ForegroundColor Yellow
     Write-Host "  1. Restart Claude Code" -ForegroundColor Yellow
     Write-Host "  2. Run: /mcp" -ForegroundColor Yellow
-    Write-Host "  3. Verify 'AIPRDReviewer' is connected" -ForegroundColor Yellow
+    Write-Host "  3. Verify 'mcp-atlassian-mutton' is connected" -ForegroundColor Yellow
     Write-Host ""
     Write-Host "Installation location: $mcpDir" -ForegroundColor Green
     Write-Host ""

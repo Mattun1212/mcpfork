@@ -5,22 +5,22 @@ from unittest.mock import Mock, patch
 import pytest
 import requests
 
-from mcp_atlassian.confluence.comments import CommentsMixin
+from mcp_atlassian.confluence.inline_comments import InlineCommentsMixin
 from mcp_atlassian.models.confluence import ConfluenceInlineComment
 
 
 class TestInlineCommentsMixin:
-    """Test class for CommentsMixin inline comments functionality."""
+    """Test class for InlineCommentsMixin functionality."""
 
     @pytest.fixture
     def comments_mixin(self, confluence_client):
-        """Create a CommentsMixin instance for testing."""
-        # CommentsMixin inherits from ConfluenceClient, so we need to create it properly
+        """Create an InlineCommentsMixin instance for testing."""
+        # InlineCommentsMixin inherits from ConfluenceClient, so we need to create it properly
         with patch(
-            "mcp_atlassian.confluence.comments.ConfluenceClient.__init__"
+            "mcp_atlassian.confluence.inline_comments.ConfluenceClient.__init__"
         ) as mock_init:
             mock_init.return_value = None
-            mixin = CommentsMixin()
+            mixin = InlineCommentsMixin()
             # Copy the necessary attributes from our mocked client
             mixin.confluence = confluence_client.confluence
             mixin.config = confluence_client.config
@@ -35,31 +35,26 @@ class TestInlineCommentsMixin:
                 {
                     "id": "12345",
                     "title": "Inline comment title",
-                    "body": {
-                        "view": {
-                            "value": "<p>This is an inline comment</p>"
-                        }
-                    },
+                    "body": {"view": {"value": "<p>This is an inline comment</p>"}},
                     "created": "2023-01-01T00:00:00.000Z",
                     "updated": "2023-01-01T00:00:00.000Z",
                     "version": {
-                        "by": {
-                            "displayName": "Test User",
-                            "accountId": "user123"
-                        }
+                        "by": {"displayName": "Test User", "accountId": "user123"}
                     },
                     "pageId": "67890",
                     "resolutionStatus": "open",
                     "inlineCommentProperties": {
                         "textSelection": "selected text",
                         "textSelectionMatchCount": 1,
-                        "textSelectionMatchIndex": 0
-                    }
+                        "textSelectionMatchIndex": 0,
+                    },
                 }
             ]
         }
 
-    def test_get_inline_comments_success(self, comments_mixin, mock_inline_comment_response):
+    def test_get_inline_comments_success(
+        self, comments_mixin, mock_inline_comment_response
+    ):
         """Test successful retrieval of inline comments."""
         # Mock the page response
         comments_mixin.confluence.get_page_by_id.return_value = {
@@ -69,10 +64,10 @@ class TestInlineCommentsMixin:
         # Mock the preprocessor
         comments_mixin.preprocessor.process_html_content.return_value = (
             "<p>This is an inline comment</p>",
-            "This is an inline comment"
+            "This is an inline comment",
         )
 
-        with patch('requests.get') as mock_get:
+        with patch("requests.get") as mock_get:
             mock_response = Mock()
             mock_response.json.return_value = mock_inline_comment_response
             mock_response.raise_for_status.return_value = None
@@ -92,7 +87,9 @@ class TestInlineCommentsMixin:
             assert result[0].text_selection_match_count == 1
             assert result[0].text_selection_match_index == 0
 
-    def test_get_inline_comments_with_html_return(self, comments_mixin, mock_inline_comment_response):
+    def test_get_inline_comments_with_html_return(
+        self, comments_mixin, mock_inline_comment_response
+    ):
         """Test retrieval of inline comments with HTML format."""
         # Mock the page response
         comments_mixin.confluence.get_page_by_id.return_value = {
@@ -102,10 +99,10 @@ class TestInlineCommentsMixin:
         # Mock the preprocessor
         comments_mixin.preprocessor.process_html_content.return_value = (
             "<p>This is an inline comment</p>",
-            "This is an inline comment"
+            "This is an inline comment",
         )
 
-        with patch('requests.get') as mock_get:
+        with patch("requests.get") as mock_get:
             mock_response = Mock()
             mock_response.json.return_value = mock_inline_comment_response
             mock_response.raise_for_status.return_value = None
@@ -125,7 +122,7 @@ class TestInlineCommentsMixin:
             "space": {"key": "TEST"}
         }
 
-        with patch('requests.get') as mock_get:
+        with patch("requests.get") as mock_get:
             mock_get.side_effect = requests.RequestException("Network error")
 
             # Execute the method
@@ -141,7 +138,7 @@ class TestInlineCommentsMixin:
             "space": {"key": "TEST"}
         }
 
-        with patch('requests.get') as mock_get:
+        with patch("requests.get") as mock_get:
             mock_response = Mock()
             mock_response.json.return_value = {"results": []}
             mock_response.raise_for_status.return_value = None
@@ -162,7 +159,7 @@ class TestInlineCommentsMixin:
                 "storage": {
                     "value": "<p>This is new selection content</p><p>Other content</p><p>This is new selection content</p>"
                 }
-            }
+            },
         }
 
         # Mock markdown to storage conversion
@@ -173,26 +170,22 @@ class TestInlineCommentsMixin:
         # Mock the preprocessor for processing response
         comments_mixin.preprocessor.process_html_content.return_value = (
             "<p>This is a new inline comment</p>",
-            "This is a new inline comment"
+            "This is a new inline comment",
         )
 
         mock_response_data = {
             "id": "54321",
-            "body": {
-                "view": {
-                    "value": "<p>This is a new inline comment</p>"
-                }
-            },
+            "body": {"view": {"value": "<p>This is a new inline comment</p>"}},
             "pageId": "67890",
             "resolutionStatus": "open",
             "inlineCommentProperties": {
                 "textSelection": "new selection",
                 "textSelectionMatchCount": 1,
-                "textSelectionMatchIndex": 0
-            }
+                "textSelectionMatchIndex": 0,
+            },
         }
 
-        with patch('requests.post') as mock_post:
+        with patch("requests.post") as mock_post:
             mock_response = Mock()
             mock_response.json.return_value = mock_response_data
             mock_response.raise_for_status.return_value = None
@@ -205,7 +198,7 @@ class TestInlineCommentsMixin:
             result, error_message = comments_mixin.add_inline_comment(
                 page_id="67890",
                 content="This is a new inline comment",
-                text_selection="new selection"
+                text_selection="new selection",
             )
 
             # Verify results
@@ -231,7 +224,7 @@ class TestInlineCommentsMixin:
             "<p>This is a new inline comment</p>"
         )
 
-        with patch('requests.post') as mock_post:
+        with patch("requests.post") as mock_post:
             mock_post.side_effect = requests.RequestException("Network error")
 
             # Execute the method - disable auto-detection to skip the match count check
@@ -239,7 +232,7 @@ class TestInlineCommentsMixin:
                 page_id="67890",
                 content="This is a new inline comment",
                 text_selection="new selection",
-                auto_detect_matches=False
+                auto_detect_matches=False,
             )
 
             # Should return None and error message on error
@@ -259,13 +252,13 @@ class TestInlineCommentsMixin:
             "<p>This is a new inline comment</p>"
         )
 
-        with patch('requests.post') as mock_post:
+        with patch("requests.post") as mock_post:
             mock_response = Mock()
             mock_response.json.return_value = None
             mock_response.raise_for_status.return_value = None
             mock_response.status_code = 200
             mock_response.headers = {}
-            mock_response.text = ''
+            mock_response.text = ""
             mock_post.return_value = mock_response
 
             # Execute the method - disable auto-detection to skip the match count check
@@ -273,7 +266,7 @@ class TestInlineCommentsMixin:
                 page_id="67890",
                 content="This is a new inline comment",
                 text_selection="new selection",
-                auto_detect_matches=False
+                auto_detect_matches=False,
             )
 
             # Should return None and error message on empty response
@@ -291,20 +284,16 @@ class TestInlineCommentsMixin:
         # Mock the preprocessor for processing response
         comments_mixin.preprocessor.process_html_content.return_value = (
             "<p>HTML content</p>",
-            "HTML content"
+            "HTML content",
         )
 
         mock_response_data = {
             "id": "54321",
-            "body": {
-                "view": {
-                    "value": "<p>HTML content</p>"
-                }
-            },
-            "pageId": "67890"
+            "body": {"view": {"value": "<p>HTML content</p>"}},
+            "pageId": "67890",
         }
 
-        with patch('requests.post') as mock_post:
+        with patch("requests.post") as mock_post:
             mock_response = Mock()
             mock_response.json.return_value = mock_response_data
             mock_response.raise_for_status.return_value = None
@@ -318,7 +307,7 @@ class TestInlineCommentsMixin:
                 page_id="67890",
                 content="<p>HTML content</p>",
                 text_selection="selection",
-                auto_detect_matches=False
+                auto_detect_matches=False,
             )
 
             # Should not call markdown conversion
@@ -328,10 +317,12 @@ class TestInlineCommentsMixin:
             # Note: The config uses a Cloud URL (*.atlassian.net) so the body format is Cloud API v2
             mock_post.assert_called_once()
             call_args = mock_post.call_args
-            request_body = call_args[1]['json']
-            assert request_body['body']['value'] == "<p>HTML content</p>"
-            assert request_body['body']['representation'] == "storage"
-            assert request_body['inlineCommentProperties']['textSelection'] == "selection"
+            request_body = call_args[1]["json"]
+            assert request_body["body"]["value"] == "<p>HTML content</p>"
+            assert request_body["body"]["representation"] == "storage"
+            assert (
+                request_body["inlineCommentProperties"]["textSelection"] == "selection"
+            )
             assert error_message is None
 
     def test_add_inline_comment_auto_detect_success(self, comments_mixin):
@@ -343,7 +334,7 @@ class TestInlineCommentsMixin:
                 "storage": {
                     "value": "<p>セットJANの価格関連情報について</p><p>他の内容</p><p>セットJANの価格関連情報も重要</p><p>セットJANの価格関連情報を確認</p>"
                 }
-            }
+            },
         }
 
         # Mock markdown to storage conversion
@@ -354,26 +345,22 @@ class TestInlineCommentsMixin:
         # Mock the preprocessor for processing response
         comments_mixin.preprocessor.process_html_content.return_value = (
             "<p>確認しました</p>",
-            "確認しました"
+            "確認しました",
         )
 
         mock_response_data = {
             "id": "54321",
-            "body": {
-                "view": {
-                    "value": "<p>確認しました</p>"
-                }
-            },
+            "body": {"view": {"value": "<p>確認しました</p>"}},
             "pageId": "67890",
             "resolutionStatus": "open",
             "inlineCommentProperties": {
                 "textSelection": "セットJANの価格関連情報",
                 "textSelectionMatchCount": 3,
-                "textSelectionMatchIndex": 1
-            }
+                "textSelectionMatchIndex": 1,
+            },
         }
 
-        with patch('requests.post') as mock_post:
+        with patch("requests.post") as mock_post:
             mock_response = Mock()
             mock_response.json.return_value = mock_response_data
             mock_response.raise_for_status.return_value = None
@@ -388,7 +375,7 @@ class TestInlineCommentsMixin:
                 content="確認しました",
                 text_selection="セットJANの価格関連情報",
                 text_selection_match_index=1,
-                auto_detect_matches=True
+                auto_detect_matches=True,
             )
 
             # Verify results
@@ -405,20 +392,20 @@ class TestInlineCommentsMixin:
             # Verify the API call was made with correct match count
             mock_post.assert_called_once()
             call_args = mock_post.call_args
-            request_body = call_args[1]['json']
-            assert request_body['inlineCommentProperties']['textSelectionMatchCount'] == 3
-            assert request_body['inlineCommentProperties']['textSelectionMatchIndex'] == 1
+            request_body = call_args[1]["json"]
+            assert (
+                request_body["inlineCommentProperties"]["textSelectionMatchCount"] == 3
+            )
+            assert (
+                request_body["inlineCommentProperties"]["textSelectionMatchIndex"] == 1
+            )
 
     def test_add_inline_comment_auto_detect_no_matches(self, comments_mixin):
         """Test handling when no matches are found during auto-detection."""
         # Mock the page response with content that doesn't contain the text
         comments_mixin.confluence.get_page_by_id.return_value = {
             "space": {"key": "TEST"},
-            "body": {
-                "storage": {
-                    "value": "<p>Different content here</p>"
-                }
-            }
+            "body": {"storage": {"value": "<p>Different content here</p>"}},
         }
 
         # Execute the method with auto-detection enabled
@@ -426,7 +413,7 @@ class TestInlineCommentsMixin:
             page_id="67890",
             content="確認しました",
             text_selection="存在しないテキスト",
-            auto_detect_matches=True
+            auto_detect_matches=True,
         )
 
         # Should return None and error message when no matches found
@@ -443,7 +430,7 @@ class TestInlineCommentsMixin:
                 "storage": {
                     "value": "<p>テスト文字列がここにあります</p><p>テスト文字列が再度登場</p>"
                 }
-            }
+            },
         }
 
         # Execute the method with auto-detection enabled and index out of range
@@ -452,7 +439,7 @@ class TestInlineCommentsMixin:
             content="確認しました",
             text_selection="テスト文字列",
             text_selection_match_index=5,  # Out of range (only 2 matches available)
-            auto_detect_matches=True
+            auto_detect_matches=True,
         )
 
         # Should return None and error message when index is out of range
@@ -466,7 +453,9 @@ class TestInlineCommentsMixin:
         html_content = "<p>セットJANの価格関連情報について</p><p>他の内容</p><p>セットJANの価格関連情報も重要</p><p>セットJANの価格関連情報を確認</p>"
 
         # Should find 3 matches
-        count = comments_mixin._count_text_matches(html_content, "セットJANの価格関連情報")
+        count = comments_mixin._count_text_matches(
+            html_content, "セットJANの価格関連情報"
+        )
         assert count == 3
 
         # Should find 0 matches for non-existent text
@@ -479,8 +468,12 @@ class TestInlineCommentsMixin:
         assert comments_mixin._count_text_matches("", "") == 0
 
         # Should handle HTML entities
-        html_with_entities = "<p>Price &gt; 100 &amp; quality</p><p>Price > 100 & quality again</p>"
-        count = comments_mixin._count_text_matches(html_with_entities, "Price > 100 & quality")
+        html_with_entities = (
+            "<p>Price &gt; 100 &amp; quality</p><p>Price > 100 & quality again</p>"
+        )
+        count = comments_mixin._count_text_matches(
+            html_with_entities, "Price > 100 & quality"
+        )
         assert count == 2
 
     def test_get_inline_comment_children_success(self, comments_mixin):
@@ -491,47 +484,39 @@ class TestInlineCommentsMixin:
                     "id": "child1",
                     "status": "current",
                     "parentCommentId": "parent123",
-                    "body": {
-                        "view": {
-                            "value": "<p>This is a child comment</p>"
-                        }
-                    },
+                    "body": {"view": {"value": "<p>This is a child comment</p>"}},
                     "version": {
                         "createdAt": "2023-01-01T00:00:00.000Z",
                         "number": 1,
-                        "authorId": "user123"
+                        "authorId": "user123",
                     },
-                    "resolutionStatus": "open"
+                    "resolutionStatus": "open",
                 },
                 {
                     "id": "child2",
                     "status": "current",
                     "parentCommentId": "parent123",
-                    "body": {
-                        "view": {
-                            "value": "<p>Another child comment</p>"
-                        }
-                    },
+                    "body": {"view": {"value": "<p>Another child comment</p>"}},
                     "version": {
                         "createdAt": "2023-01-02T00:00:00.000Z",
                         "number": 1,
-                        "authorId": "user456"
+                        "authorId": "user456",
                     },
-                    "resolutionStatus": "resolved"
-                }
+                    "resolutionStatus": "resolved",
+                },
             ],
             "_links": {
                 "next": "/wiki/api/v2/inline-comments/parent123/children?cursor=xyz123"
-            }
+            },
         }
 
         # Mock the preprocessor
         comments_mixin.preprocessor.process_html_content.return_value = (
             "<p>Processed HTML</p>",
-            "Processed markdown"
+            "Processed markdown",
         )
 
-        with patch('requests.get') as mock_get:
+        with patch("requests.get") as mock_get:
             mock_response = Mock()
             mock_response.json.return_value = mock_child_response
             mock_response.raise_for_status.return_value = None
@@ -556,13 +541,13 @@ class TestInlineCommentsMixin:
             mock_get.assert_called_once()
             call_args = mock_get.call_args
             assert "parent123/children" in call_args[0][0]
-            assert call_args[1]['params']['limit'] == 25
+            assert call_args[1]["params"]["limit"] == 25
 
     def test_get_inline_comment_children_with_pagination(self, comments_mixin):
         """Test child comment retrieval with pagination."""
         mock_response_data = {"results": []}
 
-        with patch('requests.get') as mock_get:
+        with patch("requests.get") as mock_get:
             mock_response = Mock()
             mock_response.json.return_value = mock_response_data
             mock_response.raise_for_status.return_value = None
@@ -570,21 +555,19 @@ class TestInlineCommentsMixin:
 
             # Execute with pagination parameters
             result = comments_mixin.get_inline_comment_children(
-                comment_id="parent123",
-                limit=10,
-                cursor="abc123"
+                comment_id="parent123", limit=10, cursor="abc123"
             )
 
             # Verify pagination parameters were passed
             call_args = mock_get.call_args
-            params = call_args[1]['params']
-            assert params['limit'] == 10
-            assert params['cursor'] == "abc123"
+            params = call_args[1]["params"]
+            assert params["limit"] == 10
+            assert params["cursor"] == "abc123"
             assert result == []
 
     def test_get_inline_comment_children_network_error(self, comments_mixin):
         """Test handling of network errors when fetching child comments."""
-        with patch('requests.get') as mock_get:
+        with patch("requests.get") as mock_get:
             mock_get.side_effect = requests.RequestException("Network error")
 
             # Execute the method
@@ -595,7 +578,7 @@ class TestInlineCommentsMixin:
 
     def test_get_inline_comment_children_empty_response(self, comments_mixin):
         """Test handling of empty child comments response."""
-        with patch('requests.get') as mock_get:
+        with patch("requests.get") as mock_get:
             mock_response = Mock()
             mock_response.json.return_value = {"results": []}
             mock_response.raise_for_status.return_value = None
