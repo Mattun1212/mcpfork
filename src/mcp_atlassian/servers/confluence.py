@@ -920,7 +920,7 @@ async def add_comment(
     return json.dumps(response, indent=2, ensure_ascii=False)
 
 
-@confluence_mcp.tool(tags={"confluence", "read"})
+@confluence_mcp.tool(tags={"confluence", "read", "toolset:confluence_comments"})
 async def get_inline_comments(
     ctx: Context,
     page_id: Annotated[
@@ -949,7 +949,7 @@ async def get_inline_comments(
     return json.dumps(formatted_comments, indent=2, ensure_ascii=False)
 
 
-@confluence_mcp.tool(tags={"confluence", "write"})
+@confluence_mcp.tool(tags={"confluence", "write", "toolset:confluence_comments"})
 @check_write_access
 async def add_inline_comment(
     ctx: Context,
@@ -1023,7 +1023,7 @@ async def add_inline_comment(
     return json.dumps(response, indent=2, ensure_ascii=False)
 
 
-@confluence_mcp.tool(tags={"confluence", "read"})
+@confluence_mcp.tool(tags={"confluence", "read", "toolset:confluence_comments"})
 async def get_inline_comment_by_id(
     ctx: Context,
     comment_id: Annotated[
@@ -1067,7 +1067,7 @@ async def get_inline_comment_by_id(
     return json.dumps(response, indent=2, ensure_ascii=False)
 
 
-@confluence_mcp.tool(tags={"confluence", "write"})
+@confluence_mcp.tool(tags={"confluence", "write", "toolset:confluence_comments"})
 @check_write_access
 async def update_inline_comment(
     ctx: Context,
@@ -1135,7 +1135,7 @@ async def update_inline_comment(
     return json.dumps(response, indent=2, ensure_ascii=False)
 
 
-@confluence_mcp.tool(tags={"confluence", "write"})
+@confluence_mcp.tool(tags={"confluence", "write", "toolset:confluence_comments"})
 @check_write_access
 async def delete_inline_comment(
     ctx: Context,
@@ -1179,7 +1179,7 @@ async def delete_inline_comment(
     return json.dumps(response, indent=2, ensure_ascii=False)
 
 
-@confluence_mcp.tool(tags={"confluence", "read"})
+@confluence_mcp.tool(tags={"confluence", "read", "toolset:confluence_comments"})
 async def get_inline_comment_children(
     ctx: Context,
     comment_id: Annotated[
@@ -1381,7 +1381,7 @@ async def search_user(
         )
 
 
-@confluence_mcp.tool(tags={"confluence", "read"})
+@confluence_mcp.tool(tags={"confluence", "read", "toolset:confluence_attachments"})
 async def download_attachments(
     ctx: Context,
     page_id: str,

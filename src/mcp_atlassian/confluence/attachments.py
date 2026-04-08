@@ -471,6 +471,86 @@ class AttachmentsMixin(ConfluenceClient, AttachmentsOperationsProto):
 
         return result
 
+    def download_content_attachments(
+        self, content_id: str, target_dir: str
+    ) -> dict[str, Any]:
+        """
+        Download all attachments for Confluence content.
+
+        Args:
+            content_id: The Confluence content ID
+            target_dir: The directory where attachments should be saved
+
+        Returns:
+            A dictionary with download results
+        """
+        if not os.path.isabs(target_dir):
+            target_dir = os.path.abspath(target_dir)
+
+        validate_safe_path(target_dir)
+
+        logger.info(
+            f"Downloading attachments for content {content_id} to directory: {target_dir}"
+        )
+
+        target_path = Path(target_dir)
+        target_path.mkdir(parents=True, exist_ok=True)
+
+        attachments_result = self.get_content_attachments(content_id)
+
+        if not attachments_result.get("success"):
+            return attachments_result
+
+        attachment_data = attachments_result.get("attachments", [])
+
+        if not attachment_data:
+            return {
+                "success": True,
+                "message": f"No attachments found for content {content_id}",
+                "downloaded": [],
+                "failed": [],
+            }
+
+        attachments = []
+        for attachment in attachment_data:
+            if isinstance(attachment, dict):
+                attachments.append(ConfluenceAttachment.from_api_response(attachment))
+
+        downloaded = []
+        failed = []
+
+        for attachment in attachments:
+            if not attachment.download_url:
+                logger.warning(f"No download URL for attachment {attachment.title}")
+                failed.append(
+                    {"filename": attachment.title, "error": "No download URL available"}
+                )
+                continue
+
+            safe_filename = Path(attachment.title).name
+            file_path = target_path / safe_filename
+            download_url = resolve_relative_url(attachment.download_url, self.config.url)
+            success = self.download_attachment(download_url, str(file_path))
+
+            if success:
+                downloaded.append(
+                    {
+                        "filename": attachment.title,
+                        "path": str(file_path),
+                        "size": attachment.file_size,
+                    }
+                )
+            else:
+                failed.append({"filename": attachment.title, "error": "Download failed"})
+
+        return {
+            "success": True,
+            "content_id": content_id,
+            "total": len(attachments),
+            "downloaded": downloaded,
+            "failed": failed,
+        }
+
     def get_content_attachments(
         self,
         content_id: str,
