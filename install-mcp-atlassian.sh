@@ -101,7 +101,7 @@ main() {
     # Install MCP Atlassian
     echo ""
     echo -e "${YELLOW}Installing MCP Atlassian (this may take a few minutes)...${NC}"
-    pip install git+https://github.com/Mattun1212/mcpfork.git > /dev/null 2>&1
+    pip install --upgrade --no-cache-dir git+https://github.com/Mattun1212/mcpfork.git > /dev/null 2>&1
     echo -e "${GREEN}✓${NC} MCP Atlassian installed"
 
     # Pin pydantic to a compatible version

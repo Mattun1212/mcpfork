@@ -160,7 +160,7 @@ function Main {
     # Install MCP Atlassian
     Write-Host ""
     Write-Host "[!] Installing MCP Atlassian (this may take a few minutes)..." -ForegroundColor Yellow
-    pip install git+https://github.com/Mattun1212/mcpfork.git | Out-Null
+    pip install --upgrade --no-cache-dir git+https://github.com/Mattun1212/mcpfork.git | Out-Null
     Write-Host "[✓] MCP Atlassian installed" -ForegroundColor Green
 
     # Pin pydantic to a compatible version
