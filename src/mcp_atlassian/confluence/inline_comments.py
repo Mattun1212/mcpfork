@@ -118,6 +118,17 @@ class InlineCommentsMixin(ConfluenceClient):
                     "results": inline_comments
                 }
 
+            # Debug: log raw fields relevant to resolution_status for the first comment
+            if not is_cloud:
+                sample = inline_comments_response.get("results", [])[:1]
+                for s in sample:
+                    logger.warning(
+                        f"[DEBUG resolution] id={s.get('id')} "
+                        f"resolutionStatus={s.get('resolutionStatus')!r} "
+                        f"status={s.get('status')!r} "
+                        f"metadata={s.get('metadata')!r}"
+                    )
+
             # Process each inline comment
             comment_models = []
             for comment_data in inline_comments_response.get("results", []):
