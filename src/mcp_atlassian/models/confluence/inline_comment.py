@@ -151,15 +151,18 @@ class ConfluenceInlineComment(ApiModel, TimestampMixin):
 
         # Resolution status:
         # - Cloud (API v2): returned as top-level "resolutionStatus" field
-        # - Server/DC (API v1): stored in extensions.resolution.status ("resolved"/"open")
+        # - Server/DC (API v1): stored in extensions.resolution.status
+        #   Possible values: "resolved", "open", "reopened" (after reopen)
+        #   "reopened" is normalized to "open" for consistency
         #   requires expand=extensions.resolution in the API request
         resolution_status = data.get("resolutionStatus")
         if not resolution_status:
-            resolution_status = (
+            raw_status = (
                 data.get("extensions", {})
                 .get("resolution", {})
                 .get("status", "open")
             )
+            resolution_status = "open" if raw_status != "resolved" else "resolved"
 
         return cls(
             id=str(data.get("id", CONFLUENCE_DEFAULT_ID)),

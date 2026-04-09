@@ -610,7 +610,6 @@ class InlineCommentsMixin(ConfluenceClient):
                         }
                     }
                 }
-                # Note: resolved status is not directly supported in API v1 update
 
             # Get authentication headers
             auth = self.confluence._session.auth if hasattr(self.confluence, '_session') else None
@@ -645,6 +644,32 @@ class InlineCommentsMixin(ConfluenceClient):
                 return None
 
             logger.info(f"Successfully updated inline comment with ID: {response_data.get('id', 'unknown')}")
+
+            # For Server/DC: update resolution status via dedicated endpoint
+            # PUT /rest/inlinecomments/1.0/comments/{id}/resolve/{true|false}/dangling/false
+            if not is_cloud:
+                resolve_str = "true" if resolved else "false"
+                resolve_url = urljoin(
+                    base_url,
+                    f"rest/inlinecomments/1.0/comments/{comment_id}/resolve/{resolve_str}/dangling/false"
+                )
+                resolve_resp = requests.put(
+                    resolve_url,
+                    auth=auth,
+                    headers=headers,
+                    json={},
+                    verify=self.config.verify_ssl
+                )
+                if resolve_resp.ok:
+                    logger.info(
+                        f"Successfully set resolution to '{'resolved' if resolved else 'open'}' "
+                        f"for comment {comment_id}"
+                    )
+                else:
+                    logger.warning(
+                        f"Failed to update resolution status for comment {comment_id}: "
+                        f"{resolve_resp.status_code} {resolve_resp.text}"
+                    )
 
             # Get page info to extract space details for content processing
             page_id = response_data.get("pageId")
@@ -690,6 +715,10 @@ class InlineCommentsMixin(ConfluenceClient):
                     # Also add pageId from container
                     if "container" in modified_response:
                         modified_response["pageId"] = modified_response["container"].get("id")
+                # Inject resolution status so the returned model reflects the updated state
+                modified_response["extensions"]["resolution"] = {
+                    "status": "resolved" if resolved else "open"
+                }
 
             if "body" not in modified_response:
                 modified_response["body"] = {}
