@@ -616,10 +616,12 @@ class InlineCommentsMixin(ConfluenceClient):
                 )
                 current_resp.raise_for_status()
                 current_data = current_resp.json()
+                # Server/DC expects the NEW version number (current + 1) in the PUT body
+                next_version = current_data.get("version", {}).get("number", version_number) + 1
                 # Prepare the request body according to Confluence API v1 specification
                 request_body = {
                     "version": {
-                        "number": version_number,
+                        "number": next_version,
                         "message": version_message
                     },
                     "type": current_data.get("type", "comment"),
