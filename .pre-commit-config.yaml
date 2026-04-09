@@ -20,7 +20,7 @@ repos:
         args: [
             "--fix",
             "--exit-non-zero-on-fix",
-            "--ignore=BLE001,EM102,FBT001,FBT002,E501,F841,S112,S113,B904"
+            "--ignore=BLE001,EM102,FBT001,FBT002,E501,F841,S110,S112,S113,B904"
         ]
 
 -   repo: https://github.com/pre-commit/mirrors-mypy

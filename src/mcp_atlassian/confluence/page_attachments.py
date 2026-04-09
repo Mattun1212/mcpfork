@@ -61,7 +61,7 @@ class PageAttachmentsMixin(ConfluenceClient):
         referenced_filenames = set()
         if only_used_in_content:
             try:
-                logger.info(f"Fetching page content to identify referenced attachments")
+                logger.info("Fetching page content to identify referenced attachments")
                 page = self.confluence.get_page_by_id(
                     page_id=page_id, expand="body.storage"
                 )
@@ -77,7 +77,9 @@ class PageAttachmentsMixin(ConfluenceClient):
 
                 # Also check for direct attachment references
                 # Pattern: /download/attachments/{page_id}/{filename}
-                attachment_url_pattern = rf'/download/attachments/{page_id}/([^"\'?\s]+)'
+                attachment_url_pattern = (
+                    rf'/download/attachments/{page_id}/([^"\'?\s]+)'
+                )
                 url_matches = re.findall(attachment_url_pattern, content)
                 referenced_filenames.update(
                     [urllib.parse.unquote(f) for f in url_matches]
