@@ -597,19 +597,6 @@ class InlineCommentsMixin(ConfluenceClient):
             else:
                 # Confluence Server/Data Center uses API v1
                 inline_comment_url = urljoin(base_url, f"rest/api/content/{comment_id}")
-                # Prepare the request body according to Confluence API v1 specification
-                request_body = {
-                    "version": {
-                        "number": version_number,
-                        "message": version_message
-                    },
-                    "body": {
-                        "storage": {
-                            "value": content,
-                            "representation": "storage"
-                        }
-                    }
-                }
 
             # Get authentication headers
             auth = self.confluence._session.auth if hasattr(self.confluence, '_session') else None
@@ -618,6 +605,32 @@ class InlineCommentsMixin(ConfluenceClient):
             # Copy Authorization header from session if it exists (for Personal Access Token auth)
             if hasattr(self.confluence, '_session') and 'Authorization' in self.confluence._session.headers:
                 headers['Authorization'] = self.confluence._session.headers['Authorization']
+
+            if not is_cloud:
+                # Server/DC PUT requires type and title — fetch them from current comment
+                current_resp = requests.get(
+                    inline_comment_url,
+                    auth=auth,
+                    headers=headers,
+                    verify=self.config.verify_ssl
+                )
+                current_resp.raise_for_status()
+                current_data = current_resp.json()
+                # Prepare the request body according to Confluence API v1 specification
+                request_body = {
+                    "version": {
+                        "number": version_number,
+                        "message": version_message
+                    },
+                    "type": current_data.get("type", "comment"),
+                    "title": current_data.get("title", ""),
+                    "body": {
+                        "storage": {
+                            "value": content,
+                            "representation": "storage"
+                        }
+                    }
+                }
 
             logger.debug(f"Making PUT request to: {inline_comment_url}")
             logger.debug(f"Request body: {request_body}")
