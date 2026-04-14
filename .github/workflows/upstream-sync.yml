@@ -95,15 +95,40 @@ jobs:
             echo "status=success" >> "$GITHUB_OUTPUT"
             echo "::notice::Merge succeeded with no conflicts."
           else
-            echo "status=conflict" >> "$GITHUB_OUTPUT"
-            # Capture conflicting file list before aborting
-            {
-              echo "conflicts<<EOF"
-              git diff --name-only --diff-filter=U
-              echo "EOF"
-            } >> "$GITHUB_OUTPUT"
-            echo "::warning::Merge has conflicts. Aborting — branch will be pushed pre-merge."
-            git merge --abort
+            echo "::notice::Merge has conflicts — attempting auto-resolution of fork-patched files."
+
+            # ── Auto-resolve known fork-patched files ──────────────────────
+            FORK_PATCHED_FILES="src/mcp_atlassian/servers/main.py"
+            ALL_CONFLICTS=$(git diff --name-only --diff-filter=U)
+
+            for f in $FORK_PATCHED_FILES; do
+              if echo "$ALL_CONFLICTS" | grep -qF "$f"; then
+                echo "::notice::Auto-resolving $f — taking upstream then re-applying fork patches."
+                git checkout --theirs "$f"
+                git add "$f"
+              fi
+            done
+
+            # Re-apply fork patches (idempotent — skips if already present)
+            python scripts/apply-fork-patches.py
+            git add src/mcp_atlassian/servers/main.py
+
+            # Check if any conflicts remain
+            REMAINING=$(git diff --name-only --diff-filter=U)
+            if [ -z "$REMAINING" ]; then
+              git commit --no-edit
+              echo "status=success" >> "$GITHUB_OUTPUT"
+              echo "::notice::All conflicts auto-resolved via fork patches."
+            else
+              echo "status=conflict" >> "$GITHUB_OUTPUT"
+              {
+                echo "conflicts<<EOF"
+                echo "$REMAINING"
+                echo "EOF"
+              } >> "$GITHUB_OUTPUT"
+              echo "::warning::Unresolvable conflicts remain. Aborting."
+              git merge --abort
+            fi
           fi
 
       - name: Push branch

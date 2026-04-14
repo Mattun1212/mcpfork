@@ -11,7 +11,6 @@ from ..constants import (
     CONFLUENCE_DEFAULT_ID,
     EMPTY_STRING,
 )
-
 from .common import ConfluenceUser
 
 logger = logging.getLogger(__name__)
@@ -93,38 +92,38 @@ class ConfluenceInlineComment(ApiModel, TimestampMixin):
 
         # API v2 standard fields - try multiple locations for compatibility
         text_selection = (
-            inline_comment_props.get("textSelection") or
-            properties.get("textSelection") or
-            data.get("textSelection")
+            inline_comment_props.get("textSelection")
+            or properties.get("textSelection")
+            or data.get("textSelection")
         )
 
         text_selection_match_count = (
-            inline_comment_props.get("textSelectionMatchCount") or
-            properties.get("textSelectionMatchCount") or
-            data.get("textSelectionMatchCount") or
-            1
+            inline_comment_props.get("textSelectionMatchCount")
+            or properties.get("textSelectionMatchCount")
+            or data.get("textSelectionMatchCount")
+            or 1
         )
 
         text_selection_match_index = (
-            inline_comment_props.get("textSelectionMatchIndex") or
-            properties.get("textSelectionMatchIndex") or
-            data.get("textSelectionMatchIndex") or
-            0
+            inline_comment_props.get("textSelectionMatchIndex")
+            or properties.get("textSelectionMatchIndex")
+            or data.get("textSelectionMatchIndex")
+            or 0
         )
 
         # Legacy fields (for backward compatibility) - check both naming conventions
         inline_marker_ref = (
-            properties.get("inlineMarkerRef") or
-            properties.get("inline-marker-ref") or
-            data.get("inlineMarkerRef") or
-            data.get("inline-marker-ref")
+            properties.get("inlineMarkerRef")
+            or properties.get("inline-marker-ref")
+            or data.get("inlineMarkerRef")
+            or data.get("inline-marker-ref")
         )
 
         inline_original_selection = (
-            properties.get("inlineOriginalSelection") or
-            properties.get("inline-original-selection") or
-            data.get("inlineOriginalSelection") or
-            data.get("inline-original-selection")
+            properties.get("inlineOriginalSelection")
+            or properties.get("inline-original-selection")
+            or data.get("inlineOriginalSelection")
+            or data.get("inline-original-selection")
         )
 
         # Version information
@@ -158,9 +157,7 @@ class ConfluenceInlineComment(ApiModel, TimestampMixin):
         resolution_status = data.get("resolutionStatus")
         if not resolution_status:
             raw_status = (
-                data.get("extensions", {})
-                .get("resolution", {})
-                .get("status", "open")
+                data.get("extensions", {}).get("resolution", {}).get("status", "open")
             )
             resolution_status = "open" if raw_status != "resolved" else "resolved"
 

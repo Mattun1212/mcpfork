@@ -5,9 +5,9 @@ Upstream (sooperset/mcp-atlassian) does not include inline comment support.
 """
 
 import logging
-from html import unescape
 import re
 import time
+from html import unescape
 from typing import Any
 from urllib.parse import urljoin
 
@@ -46,16 +46,25 @@ class InlineCommentsMixin(ConfluenceClient):
 
             # Construct the inline comments endpoint URL
             base_url = self.config.url
-            if not base_url.endswith('/'):
-                base_url += '/'
+            if not base_url.endswith("/"):
+                base_url += "/"
 
             # Get authentication headers
-            auth = self.confluence._session.auth if hasattr(self.confluence, '_session') else None
+            auth = (
+                self.confluence._session.auth
+                if hasattr(self.confluence, "_session")
+                else None
+            )
             headers = {"Accept": "application/json", "Content-Type": "application/json"}
 
             # Copy Authorization header from session if it exists (for Personal Access Token auth)
-            if hasattr(self.confluence, '_session') and 'Authorization' in self.confluence._session.headers:
-                headers['Authorization'] = self.confluence._session.headers['Authorization']
+            if (
+                hasattr(self.confluence, "_session")
+                and "Authorization" in self.confluence._session.headers
+            ):
+                headers["Authorization"] = self.confluence._session.headers[
+                    "Authorization"
+                ]
 
             if is_cloud:
                 # Confluence Cloud uses API v2
@@ -64,8 +73,12 @@ class InlineCommentsMixin(ConfluenceClient):
             else:
                 # Confluence Server/Data Center uses API v1
                 # Include metadata.properties to retrieve resolution status
-                inline_comments_url = urljoin(base_url, f"rest/api/content/{page_id}/child/comment")
-                params = {"expand": "body.view.value,version,extensions.inlineProperties,extensions.resolution,metadata.properties"}
+                inline_comments_url = urljoin(
+                    base_url, f"rest/api/content/{page_id}/child/comment"
+                )
+                params = {
+                    "expand": "body.view.value,version,extensions.inlineProperties,extensions.resolution,metadata.properties"
+                }
 
             # Make the request with retry logic for rate limiting
             max_retries = 3
@@ -78,7 +91,7 @@ class InlineCommentsMixin(ConfluenceClient):
                         auth=auth,
                         headers=headers,
                         params=params,
-                        verify=self.config.verify_ssl
+                        verify=self.config.verify_ssl,
                     )
                     response.raise_for_status()
                     response_data = response.json()
@@ -88,7 +101,9 @@ class InlineCommentsMixin(ConfluenceClient):
                     if not is_cloud:
                         result_count = len(response_data.get("results", []))
                         if result_count == 0 and attempt < max_retries - 1:
-                            logger.warning(f"[DEBUG] Got 0 results on attempt {attempt + 1}, retrying after {retry_delay}s...")
+                            logger.warning(
+                                f"[DEBUG] Got 0 results on attempt {attempt + 1}, retrying after {retry_delay}s..."
+                            )
                             time.sleep(retry_delay)
                             continue
 
@@ -97,7 +112,9 @@ class InlineCommentsMixin(ConfluenceClient):
 
                 except requests.exceptions.HTTPError as e:
                     if attempt < max_retries - 1:
-                        logger.warning(f"[DEBUG] HTTP error on attempt {attempt + 1}: {e}, retrying after {retry_delay}s...")
+                        logger.warning(
+                            f"[DEBUG] HTTP error on attempt {attempt + 1}: {e}, retrying after {retry_delay}s..."
+                        )
                         time.sleep(retry_delay)
                         continue
                     else:
@@ -110,13 +127,12 @@ class InlineCommentsMixin(ConfluenceClient):
                 # For Server/Data Center, filter comments with location="inline"
                 all_comments = response_data.get("results", [])
                 inline_comments = [
-                    comment for comment in all_comments
+                    comment
+                    for comment in all_comments
                     if comment.get("extensions", {}).get("location") == "inline"
                 ]
 
-                inline_comments_response = {
-                    "results": inline_comments
-                }
+                inline_comments_response = {"results": inline_comments}
 
             # Debug: log raw fields relevant to resolution_status for the first comment
             if not is_cloud:
@@ -153,17 +169,25 @@ class InlineCommentsMixin(ConfluenceClient):
 
                 # For Server/Data Center, map extensions.inlineProperties to API v2 format
                 if not is_cloud and "extensions" in modified_comment_data:
-                    inline_props = modified_comment_data["extensions"].get("inlineProperties", {})
+                    inline_props = modified_comment_data["extensions"].get(
+                        "inlineProperties", {}
+                    )
                     if inline_props:
                         # Map Server/Data Center format to API v2 format
                         modified_comment_data["inlineCommentProperties"] = {
                             "textSelection": inline_props.get("originalSelection", ""),
-                            "textSelectionMatchCount": inline_props.get("numMatches", 1),
-                            "textSelectionMatchIndex": inline_props.get("matchIndex", 0)
+                            "textSelectionMatchCount": inline_props.get(
+                                "numMatches", 1
+                            ),
+                            "textSelectionMatchIndex": inline_props.get(
+                                "matchIndex", 0
+                            ),
                         }
                         # Also add pageId from container
                         if "container" in modified_comment_data:
-                            modified_comment_data["pageId"] = modified_comment_data["container"].get("id")
+                            modified_comment_data["pageId"] = modified_comment_data[
+                                "container"
+                            ].get("id")
 
                 # Modify the body value based on the return format
                 if "body" not in modified_comment_data:
@@ -215,7 +239,7 @@ class InlineCommentsMixin(ConfluenceClient):
             return 0
 
         # Remove HTML tags and decode HTML entities
-        text_only = re.sub(r'<[^>]+>', '', page_content)
+        text_only = re.sub(r"<[^>]+>", "", page_content)
         text_only = unescape(text_only)
 
         # Count occurrences
@@ -228,7 +252,7 @@ class InlineCommentsMixin(ConfluenceClient):
         text_selection: str,
         text_selection_match_count: int | None = None,
         text_selection_match_index: int = 0,
-        auto_detect_matches: bool = True
+        auto_detect_matches: bool = True,
     ) -> tuple[ConfluenceInlineComment | None, str | None]:
         """
         Add an inline comment to a Confluence page.
@@ -250,15 +274,21 @@ class InlineCommentsMixin(ConfluenceClient):
             # Get page info to extract space details and content for auto-detection
             page = self.confluence.get_page_by_id(
                 page_id=page_id,
-                expand="space,body.storage" if auto_detect_matches and text_selection_match_count is None else "space"
+                expand="space,body.storage"
+                if auto_detect_matches and text_selection_match_count is None
+                else "space",
             )
             space_key = page.get("space", {}).get("key", "")
 
             # Auto-detect match count if requested and not provided
             if auto_detect_matches and text_selection_match_count is None:
                 page_content = page.get("body", {}).get("storage", {}).get("value", "")
-                text_selection_match_count = self._count_text_matches(page_content, text_selection)
-                logger.info(f"Auto-detected {text_selection_match_count} matches for text selection: {text_selection[:50]}...")
+                text_selection_match_count = self._count_text_matches(
+                    page_content, text_selection
+                )
+                logger.info(
+                    f"Auto-detected {text_selection_match_count} matches for text selection: {text_selection[:50]}..."
+                )
 
                 if text_selection_match_count == 0:
                     error_msg = f"No matches found for text selection: '{text_selection[:100]}...'"
@@ -281,47 +311,47 @@ class InlineCommentsMixin(ConfluenceClient):
             is_cloud = self.config.is_cloud
 
             # Get authentication
-            auth = self.confluence._session.auth if hasattr(self.confluence, '_session') else None
+            auth = (
+                self.confluence._session.auth
+                if hasattr(self.confluence, "_session")
+                else None
+            )
             headers = {"Accept": "application/json", "Content-Type": "application/json"}
 
             # Copy Authorization header from session if it exists (for Personal Access Token auth)
-            if hasattr(self.confluence, '_session') and 'Authorization' in self.confluence._session.headers:
-                headers['Authorization'] = self.confluence._session.headers['Authorization']
+            if (
+                hasattr(self.confluence, "_session")
+                and "Authorization" in self.confluence._session.headers
+            ):
+                headers["Authorization"] = self.confluence._session.headers[
+                    "Authorization"
+                ]
 
             # Construct the URL and request body based on Confluence version
             base_url = self.config.url
-            if not base_url.endswith('/'):
-                base_url += '/'
+            if not base_url.endswith("/"):
+                base_url += "/"
 
             if is_cloud:
                 # Confluence Cloud uses API v2
                 inline_comments_url = urljoin(base_url, "wiki/api/v2/inline-comments")
                 request_body = {
                     "pageId": page_id,
-                    "body": {
-                        "representation": "storage",
-                        "value": content
-                    },
+                    "body": {"representation": "storage", "value": content},
                     "inlineCommentProperties": {
                         "textSelection": text_selection,
                         "textSelectionMatchCount": text_selection_match_count,
-                        "textSelectionMatchIndex": text_selection_match_index
-                    }
+                        "textSelectionMatchIndex": text_selection_match_index,
+                    },
                 }
             else:
                 # Confluence Server/Data Center uses API v1
                 inline_comments_url = urljoin(base_url, "rest/api/content")
                 request_body = {
                     "type": "comment",
-                    "container": {
-                        "id": page_id,
-                        "type": "page"
-                    },
+                    "container": {"id": page_id, "type": "page"},
                     "body": {
-                        "storage": {
-                            "value": content,
-                            "representation": "storage"
-                        }
+                        "storage": {"value": content, "representation": "storage"}
                     },
                     "extensions": {
                         "location": "inline",
@@ -330,9 +360,9 @@ class InlineCommentsMixin(ConfluenceClient):
                             "originalSelection": text_selection,
                             "matchIndex": text_selection_match_index,
                             "serializedHighlights": f'[["{text_selection}"]]',
-                            "lastFetchTime": str(int(time.time()))
-                        }
-                    }
+                            "lastFetchTime": str(int(time.time())),
+                        },
+                    },
                 }
 
             # Debug logging
@@ -347,7 +377,7 @@ class InlineCommentsMixin(ConfluenceClient):
                 auth=auth,
                 headers=headers,
                 json=request_body,
-                verify=self.config.verify_ssl
+                verify=self.config.verify_ssl,
             )
 
             # Log response details for debugging
@@ -365,7 +395,9 @@ class InlineCommentsMixin(ConfluenceClient):
                 return None, error_msg
 
             # Log successful response for debugging
-            logger.info(f"Successfully created inline comment with ID: {response_data.get('id', 'unknown')}")
+            logger.info(
+                f"Successfully created inline comment with ID: {response_data.get('id', 'unknown')}"
+            )
 
             # Process the comment to return a consistent model
             body_content = ""
@@ -376,7 +408,9 @@ class InlineCommentsMixin(ConfluenceClient):
                 elif "storage" in response_data["body"]:
                     body_content = response_data["body"]["storage"].get("value", "")
                 elif "atlas_doc_format" in response_data["body"]:
-                    body_content = response_data["body"]["atlas_doc_format"].get("value", "")
+                    body_content = response_data["body"]["atlas_doc_format"].get(
+                        "value", ""
+                    )
 
             _, processed_markdown = self.preprocessor.process_html_content(
                 body_content,
@@ -401,25 +435,37 @@ class InlineCommentsMixin(ConfluenceClient):
             return inline_comment, None
 
         except requests.RequestException as e:
-            error_msg = f"Network error when adding inline comment to page {page_id}: {str(e)}"
-            if hasattr(e, 'response') and e.response is not None:
-                error_msg += f" | Status: {e.response.status_code} | Response: {e.response.text}"
+            error_msg = (
+                f"Network error when adding inline comment to page {page_id}: {str(e)}"
+            )
+            if hasattr(e, "response") and e.response is not None:
+                error_msg += (
+                    f" | Status: {e.response.status_code} | Response: {e.response.text}"
+                )
                 logger.error(error_msg)
             else:
                 logger.error(error_msg)
             return None, error_msg
         except (ValueError, TypeError, KeyError) as e:
-            error_msg = f"Error processing inline comment data for page {page_id}: {str(e)}"
+            error_msg = (
+                f"Error processing inline comment data for page {page_id}: {str(e)}"
+            )
             logger.error(error_msg)
             logger.debug("Full exception details for data processing", exc_info=True)
             return None, error_msg
         except Exception as e:  # noqa: BLE001 - Intentional fallback with full logging
-            error_msg = f"Unexpected error adding inline comment to page {page_id}: {str(e)}"
+            error_msg = (
+                f"Unexpected error adding inline comment to page {page_id}: {str(e)}"
+            )
             logger.error(error_msg)
-            logger.debug("Full exception details for adding inline comment", exc_info=True)
+            logger.debug(
+                "Full exception details for adding inline comment", exc_info=True
+            )
             return None, error_msg
 
-    def get_inline_comment_by_id(self, comment_id: str) -> ConfluenceInlineComment | None:
+    def get_inline_comment_by_id(
+        self, comment_id: str
+    ) -> ConfluenceInlineComment | None:
         """
         Get a specific inline comment by its ID.
 
@@ -435,25 +481,38 @@ class InlineCommentsMixin(ConfluenceClient):
 
             # Construct the inline comment endpoint URL
             base_url = self.config.url
-            if not base_url.endswith('/'):
-                base_url += '/'
+            if not base_url.endswith("/"):
+                base_url += "/"
 
             if is_cloud:
                 # Confluence Cloud uses API v2
-                inline_comment_url = urljoin(base_url, f"wiki/api/v2/inline-comments/{comment_id}")
+                inline_comment_url = urljoin(
+                    base_url, f"wiki/api/v2/inline-comments/{comment_id}"
+                )
                 params: dict[str, Any] = {}
             else:
                 # Confluence Server/Data Center uses API v1
                 inline_comment_url = urljoin(base_url, f"rest/api/content/{comment_id}")
-                params = {"expand": "body.view.value,version,extensions.inlineProperties,extensions.resolution,container,metadata.properties"}
+                params = {
+                    "expand": "body.view.value,version,extensions.inlineProperties,extensions.resolution,container,metadata.properties"
+                }
 
             # Get authentication headers
-            auth = self.confluence._session.auth if hasattr(self.confluence, '_session') else None
+            auth = (
+                self.confluence._session.auth
+                if hasattr(self.confluence, "_session")
+                else None
+            )
             headers = {"Accept": "application/json"}
 
             # Copy Authorization header from session if it exists (for Personal Access Token auth)
-            if hasattr(self.confluence, '_session') and 'Authorization' in self.confluence._session.headers:
-                headers['Authorization'] = self.confluence._session.headers['Authorization']
+            if (
+                hasattr(self.confluence, "_session")
+                and "Authorization" in self.confluence._session.headers
+            ):
+                headers["Authorization"] = self.confluence._session.headers[
+                    "Authorization"
+                ]
 
             logger.debug(f"Making GET request to: {inline_comment_url}")
 
@@ -463,7 +522,7 @@ class InlineCommentsMixin(ConfluenceClient):
                 auth=auth,
                 headers=headers,
                 params=params,
-                verify=self.config.verify_ssl
+                verify=self.config.verify_ssl,
             )
 
             logger.debug(f"Response status: {response.status_code}")
@@ -474,7 +533,9 @@ class InlineCommentsMixin(ConfluenceClient):
             comment_data = response.json()
 
             if not comment_data:
-                logger.error(f"Failed to get inline comment {comment_id}: empty response")
+                logger.error(
+                    f"Failed to get inline comment {comment_id}: empty response"
+                )
                 return None
 
             # Get page info to extract space details for content processing
@@ -482,7 +543,9 @@ class InlineCommentsMixin(ConfluenceClient):
             space_key = ""
             if page_id:
                 try:
-                    page = self.confluence.get_page_by_id(page_id=page_id, expand="space")
+                    page = self.confluence.get_page_by_id(
+                        page_id=page_id, expand="space"
+                    )
                     space_key = page.get("space", {}).get("key", "")
                 except Exception:
                     # If we can't get page info, continue without space context
@@ -496,7 +559,9 @@ class InlineCommentsMixin(ConfluenceClient):
                 elif "storage" in comment_data["body"]:
                     body_content = comment_data["body"]["storage"].get("value", "")
                 elif "atlas_doc_format" in comment_data["body"]:
-                    body_content = comment_data["body"]["atlas_doc_format"].get("value", "")
+                    body_content = comment_data["body"]["atlas_doc_format"].get(
+                        "value", ""
+                    )
 
             _, processed_markdown = self.preprocessor.process_html_content(
                 body_content, space_key=space_key, confluence_client=self.confluence
@@ -507,17 +572,21 @@ class InlineCommentsMixin(ConfluenceClient):
 
             # For Server/Data Center, map extensions.inlineProperties to API v2 format
             if not is_cloud and "extensions" in modified_comment_data:
-                inline_props = modified_comment_data["extensions"].get("inlineProperties", {})
+                inline_props = modified_comment_data["extensions"].get(
+                    "inlineProperties", {}
+                )
                 if inline_props:
                     # Map Server/Data Center format to API v2 format
                     modified_comment_data["inlineCommentProperties"] = {
                         "textSelection": inline_props.get("originalSelection", ""),
                         "textSelectionMatchCount": inline_props.get("numMatches", 1),
-                        "textSelectionMatchIndex": inline_props.get("matchIndex", 0)
+                        "textSelectionMatchIndex": inline_props.get("matchIndex", 0),
                     }
                     # Also add pageId from container
                     if "container" in modified_comment_data:
-                        modified_comment_data["pageId"] = modified_comment_data["container"].get("id")
+                        modified_comment_data["pageId"] = modified_comment_data[
+                            "container"
+                        ].get("id")
 
             # Modify the body value to include processed markdown
             if "body" not in modified_comment_data:
@@ -534,14 +603,22 @@ class InlineCommentsMixin(ConfluenceClient):
             )
 
         except requests.RequestException as e:
-            logger.error(f"Network error when fetching inline comment {comment_id}: {str(e)}")
+            logger.error(
+                f"Network error when fetching inline comment {comment_id}: {str(e)}"
+            )
             return None
         except (ValueError, TypeError, KeyError) as e:
-            logger.error(f"Error processing inline comment data for {comment_id}: {str(e)}")
+            logger.error(
+                f"Error processing inline comment data for {comment_id}: {str(e)}"
+            )
             return None
         except Exception as e:  # noqa: BLE001 - Intentional fallback with full logging
-            logger.error(f"Unexpected error fetching inline comment {comment_id}: {str(e)}")
-            logger.debug("Full exception details for fetching inline comment", exc_info=True)
+            logger.error(
+                f"Unexpected error fetching inline comment {comment_id}: {str(e)}"
+            )
+            logger.debug(
+                "Full exception details for fetching inline comment", exc_info=True
+            )
             return None
 
     def update_inline_comment(
@@ -550,7 +627,7 @@ class InlineCommentsMixin(ConfluenceClient):
         content: str,
         version_number: int,
         version_message: str = "",
-        resolved: bool = False
+        resolved: bool = False,
     ) -> ConfluenceInlineComment | None:
         """
         Update an existing inline comment on a Confluence page.
@@ -576,35 +653,40 @@ class InlineCommentsMixin(ConfluenceClient):
 
             # Construct the inline comment endpoint URL
             base_url = self.config.url
-            if not base_url.endswith('/'):
-                base_url += '/'
+            if not base_url.endswith("/"):
+                base_url += "/"
 
             if is_cloud:
                 # Confluence Cloud uses API v2
-                inline_comment_url = urljoin(base_url, f"wiki/api/v2/inline-comments/{comment_id}")
+                inline_comment_url = urljoin(
+                    base_url, f"wiki/api/v2/inline-comments/{comment_id}"
+                )
                 # Prepare the request body according to Confluence API v2 specification
                 request_body: dict[str, Any] = {
-                    "version": {
-                        "number": version_number,
-                        "message": version_message
-                    },
-                    "body": {
-                        "representation": "storage",
-                        "value": content
-                    },
-                    "resolved": resolved
+                    "version": {"number": version_number, "message": version_message},
+                    "body": {"representation": "storage", "value": content},
+                    "resolved": resolved,
                 }
             else:
                 # Confluence Server/Data Center uses API v1
                 inline_comment_url = urljoin(base_url, f"rest/api/content/{comment_id}")
 
             # Get authentication headers
-            auth = self.confluence._session.auth if hasattr(self.confluence, '_session') else None
+            auth = (
+                self.confluence._session.auth
+                if hasattr(self.confluence, "_session")
+                else None
+            )
             headers = {"Accept": "application/json", "Content-Type": "application/json"}
 
             # Copy Authorization header from session if it exists (for Personal Access Token auth)
-            if hasattr(self.confluence, '_session') and 'Authorization' in self.confluence._session.headers:
-                headers['Authorization'] = self.confluence._session.headers['Authorization']
+            if (
+                hasattr(self.confluence, "_session")
+                and "Authorization" in self.confluence._session.headers
+            ):
+                headers["Authorization"] = self.confluence._session.headers[
+                    "Authorization"
+                ]
 
             if not is_cloud:
                 # Server/DC PUT requires type and title — fetch them from current comment
@@ -612,26 +694,22 @@ class InlineCommentsMixin(ConfluenceClient):
                     inline_comment_url,
                     auth=auth,
                     headers=headers,
-                    verify=self.config.verify_ssl
+                    verify=self.config.verify_ssl,
                 )
                 current_resp.raise_for_status()
                 current_data = current_resp.json()
                 # Server/DC expects the NEW version number (current + 1) in the PUT body
-                next_version = current_data.get("version", {}).get("number", version_number) + 1
+                next_version = (
+                    current_data.get("version", {}).get("number", version_number) + 1
+                )
                 # Prepare the request body according to Confluence API v1 specification
                 request_body = {
-                    "version": {
-                        "number": next_version,
-                        "message": version_message
-                    },
+                    "version": {"number": next_version, "message": version_message},
                     "type": current_data.get("type", "comment"),
                     "title": current_data.get("title", ""),
                     "body": {
-                        "storage": {
-                            "value": content,
-                            "representation": "storage"
-                        }
-                    }
+                        "storage": {"value": content, "representation": "storage"}
+                    },
                 }
 
             logger.debug(f"Making PUT request to: {inline_comment_url}")
@@ -643,7 +721,7 @@ class InlineCommentsMixin(ConfluenceClient):
                 auth=auth,
                 headers=headers,
                 json=request_body,
-                verify=self.config.verify_ssl
+                verify=self.config.verify_ssl,
             )
 
             logger.debug(f"Response status: {response.status_code}")
@@ -658,7 +736,9 @@ class InlineCommentsMixin(ConfluenceClient):
                 logger.error("Failed to update inline comment: empty response")
                 return None
 
-            logger.info(f"Successfully updated inline comment with ID: {response_data.get('id', 'unknown')}")
+            logger.info(
+                f"Successfully updated inline comment with ID: {response_data.get('id', 'unknown')}"
+            )
 
             # For Server/DC: update resolution status via dedicated endpoint
             # PUT /rest/inlinecomments/1.0/comments/{id}/resolve/{true|false}/dangling/false
@@ -666,14 +746,14 @@ class InlineCommentsMixin(ConfluenceClient):
                 resolve_str = "true" if resolved else "false"
                 resolve_url = urljoin(
                     base_url,
-                    f"rest/inlinecomments/1.0/comments/{comment_id}/resolve/{resolve_str}/dangling/false"
+                    f"rest/inlinecomments/1.0/comments/{comment_id}/resolve/{resolve_str}/dangling/false",
                 )
                 resolve_resp = requests.put(
                     resolve_url,
                     auth=auth,
                     headers=headers,
                     json={},
-                    verify=self.config.verify_ssl
+                    verify=self.config.verify_ssl,
                 )
                 if resolve_resp.ok:
                     logger.info(
@@ -691,7 +771,9 @@ class InlineCommentsMixin(ConfluenceClient):
             space_key = ""
             if page_id:
                 try:
-                    page = self.confluence.get_page_by_id(page_id=page_id, expand="space")
+                    page = self.confluence.get_page_by_id(
+                        page_id=page_id, expand="space"
+                    )
                     space_key = page.get("space", {}).get("key", "")
                 except Exception:
                     # If we can't get page info, continue without space context
@@ -706,7 +788,9 @@ class InlineCommentsMixin(ConfluenceClient):
                 elif "storage" in response_data["body"]:
                     body_content = response_data["body"]["storage"].get("value", "")
                 elif "atlas_doc_format" in response_data["body"]:
-                    body_content = response_data["body"]["atlas_doc_format"].get("value", "")
+                    body_content = response_data["body"]["atlas_doc_format"].get(
+                        "value", ""
+                    )
 
             _, processed_markdown = self.preprocessor.process_html_content(
                 body_content,
@@ -719,17 +803,21 @@ class InlineCommentsMixin(ConfluenceClient):
 
             # For Server/Data Center, map extensions.inlineProperties to API v2 format
             if not is_cloud and "extensions" in modified_response:
-                inline_props = modified_response["extensions"].get("inlineProperties", {})
+                inline_props = modified_response["extensions"].get(
+                    "inlineProperties", {}
+                )
                 if inline_props:
                     # Map Server/Data Center format to API v2 format
                     modified_response["inlineCommentProperties"] = {
                         "textSelection": inline_props.get("originalSelection", ""),
                         "textSelectionMatchCount": inline_props.get("numMatches", 1),
-                        "textSelectionMatchIndex": inline_props.get("matchIndex", 0)
+                        "textSelectionMatchIndex": inline_props.get("matchIndex", 0),
                     }
                     # Also add pageId from container
                     if "container" in modified_response:
-                        modified_response["pageId"] = modified_response["container"].get("id")
+                        modified_response["pageId"] = modified_response[
+                            "container"
+                        ].get("id")
                 # Inject resolution status so the returned model reflects the updated state
                 modified_response["extensions"]["resolution"] = {
                     "status": "resolved" if resolved else "open"
@@ -749,18 +837,26 @@ class InlineCommentsMixin(ConfluenceClient):
             )
 
         except requests.RequestException as e:
-            logger.error(f"Network error when updating inline comment {comment_id}: {str(e)}")
-            if hasattr(e, 'response') and e.response is not None:
+            logger.error(
+                f"Network error when updating inline comment {comment_id}: {str(e)}"
+            )
+            if hasattr(e, "response") and e.response is not None:
                 logger.error(f"Response status: {e.response.status_code}")
                 logger.error(f"Response body: {e.response.text}")
             return None
         except (ValueError, TypeError, KeyError) as e:
-            logger.error(f"Error processing inline comment update for {comment_id}: {str(e)}")
+            logger.error(
+                f"Error processing inline comment update for {comment_id}: {str(e)}"
+            )
             logger.debug("Full exception details for data processing", exc_info=True)
             return None
         except Exception as e:  # noqa: BLE001 - Intentional fallback with full logging
-            logger.error(f"Unexpected error updating inline comment {comment_id}: {str(e)}")
-            logger.debug("Full exception details for updating inline comment", exc_info=True)
+            logger.error(
+                f"Unexpected error updating inline comment {comment_id}: {str(e)}"
+            )
+            logger.debug(
+                "Full exception details for updating inline comment", exc_info=True
+            )
             return None
 
     def delete_inline_comment(self, comment_id: str) -> bool:
@@ -779,23 +875,34 @@ class InlineCommentsMixin(ConfluenceClient):
 
             # Construct the inline comment endpoint URL
             base_url = self.config.url
-            if not base_url.endswith('/'):
-                base_url += '/'
+            if not base_url.endswith("/"):
+                base_url += "/"
 
             if is_cloud:
                 # Confluence Cloud uses API v2
-                inline_comment_url = urljoin(base_url, f"wiki/api/v2/inline-comments/{comment_id}")
+                inline_comment_url = urljoin(
+                    base_url, f"wiki/api/v2/inline-comments/{comment_id}"
+                )
             else:
                 # Confluence Server/Data Center uses API v1
                 inline_comment_url = urljoin(base_url, f"rest/api/content/{comment_id}")
 
             # Get authentication headers
-            auth = self.confluence._session.auth if hasattr(self.confluence, '_session') else None
+            auth = (
+                self.confluence._session.auth
+                if hasattr(self.confluence, "_session")
+                else None
+            )
             headers = {"Accept": "application/json"}
 
             # Copy Authorization header from session if it exists (for Personal Access Token auth)
-            if hasattr(self.confluence, '_session') and 'Authorization' in self.confluence._session.headers:
-                headers['Authorization'] = self.confluence._session.headers['Authorization']
+            if (
+                hasattr(self.confluence, "_session")
+                and "Authorization" in self.confluence._session.headers
+            ):
+                headers["Authorization"] = self.confluence._session.headers[
+                    "Authorization"
+                ]
 
             logger.debug(f"Making DELETE request to: {inline_comment_url}")
 
@@ -804,7 +911,7 @@ class InlineCommentsMixin(ConfluenceClient):
                 inline_comment_url,
                 auth=auth,
                 headers=headers,
-                verify=self.config.verify_ssl
+                verify=self.config.verify_ssl,
             )
 
             logger.debug(f"Response status: {response.status_code}")
@@ -813,21 +920,29 @@ class InlineCommentsMixin(ConfluenceClient):
 
             # API returns 204 No Content on successful deletion
             if response.status_code == 204:
-                logger.info(f"Successfully deleted inline comment with ID: {comment_id}")
+                logger.info(
+                    f"Successfully deleted inline comment with ID: {comment_id}"
+                )
                 return True
             else:
                 response.raise_for_status()
                 return False
 
         except requests.RequestException as e:
-            logger.error(f"Network error when deleting inline comment {comment_id}: {str(e)}")
-            if hasattr(e, 'response') and e.response is not None:
+            logger.error(
+                f"Network error when deleting inline comment {comment_id}: {str(e)}"
+            )
+            if hasattr(e, "response") and e.response is not None:
                 logger.error(f"Response status: {e.response.status_code}")
                 logger.error(f"Response body: {e.response.text}")
             return False
         except Exception as e:  # noqa: BLE001 - Intentional fallback with full logging
-            logger.error(f"Unexpected error deleting inline comment {comment_id}: {str(e)}")
-            logger.debug("Full exception details for deleting inline comment", exc_info=True)
+            logger.error(
+                f"Unexpected error deleting inline comment {comment_id}: {str(e)}"
+            )
+            logger.debug(
+                "Full exception details for deleting inline comment", exc_info=True
+            )
             return False
 
     def get_inline_comment_children(
@@ -835,7 +950,7 @@ class InlineCommentsMixin(ConfluenceClient):
         comment_id: str,
         return_markdown: bool = True,
         limit: int = 25,
-        cursor: str | None = None
+        cursor: str | None = None,
     ) -> list[ConfluenceInlineComment]:
         """
         Get child comments of a specific inline comment.
@@ -856,12 +971,14 @@ class InlineCommentsMixin(ConfluenceClient):
 
             # Construct the inline comment children endpoint URL
             base_url = self.config.url
-            if not base_url.endswith('/'):
-                base_url += '/'
+            if not base_url.endswith("/"):
+                base_url += "/"
 
             if is_cloud:
                 # Confluence Cloud uses API v2
-                children_url = urljoin(base_url, f"wiki/api/v2/inline-comments/{comment_id}/children")
+                children_url = urljoin(
+                    base_url, f"wiki/api/v2/inline-comments/{comment_id}/children"
+                )
                 # Prepare query parameters
                 params: dict[str, Any] = {"limit": limit}
                 if cursor:
@@ -869,16 +986,29 @@ class InlineCommentsMixin(ConfluenceClient):
             else:
                 # Confluence Server/Data Center uses API v1
                 # Child comments are retrieved using the same endpoint as regular child comments
-                children_url = urljoin(base_url, f"rest/api/content/{comment_id}/child/comment")
-                params = {"expand": "body.view.value,version,extensions.inlineProperties,extensions.resolution,container,metadata.properties"}
+                children_url = urljoin(
+                    base_url, f"rest/api/content/{comment_id}/child/comment"
+                )
+                params = {
+                    "expand": "body.view.value,version,extensions.inlineProperties,extensions.resolution,container,metadata.properties"
+                }
 
             # Get authentication headers
-            auth = self.confluence._session.auth if hasattr(self.confluence, '_session') else None
+            auth = (
+                self.confluence._session.auth
+                if hasattr(self.confluence, "_session")
+                else None
+            )
             headers = {"Accept": "application/json"}
 
             # Copy Authorization header from session if it exists (for Personal Access Token auth)
-            if hasattr(self.confluence, '_session') and 'Authorization' in self.confluence._session.headers:
-                headers['Authorization'] = self.confluence._session.headers['Authorization']
+            if (
+                hasattr(self.confluence, "_session")
+                and "Authorization" in self.confluence._session.headers
+            ):
+                headers["Authorization"] = self.confluence._session.headers[
+                    "Authorization"
+                ]
 
             logger.debug(f"Making GET request to: {children_url}")
             logger.debug(f"Query params: {params}")
@@ -889,7 +1019,7 @@ class InlineCommentsMixin(ConfluenceClient):
                 auth=auth,
                 headers=headers,
                 params=params,
-                verify=self.config.verify_ssl
+                verify=self.config.verify_ssl,
             )
 
             logger.debug(f"Response status: {response.status_code}")
@@ -914,14 +1044,18 @@ class InlineCommentsMixin(ConfluenceClient):
                         body_content = body["view"]["value"]
                     elif "storage" in body and body["storage"].get("value"):
                         body_content = body["storage"]["value"]
-                    elif "atlas_doc_format" in body and body["atlas_doc_format"].get("value"):
+                    elif "atlas_doc_format" in body and body["atlas_doc_format"].get(
+                        "value"
+                    ):
                         body_content = body["atlas_doc_format"]["value"]
 
                 # Process HTML content if we have it
                 if body_content:
                     processed_html, processed_markdown = (
                         self.preprocessor.process_html_content(
-                            body_content, space_key="", confluence_client=self.confluence
+                            body_content,
+                            space_key="",
+                            confluence_client=self.confluence,
                         )
                     )
 
@@ -930,17 +1064,27 @@ class InlineCommentsMixin(ConfluenceClient):
 
                     # For Server/Data Center, map extensions.inlineProperties to API v2 format
                     if not is_cloud and "extensions" in modified_comment_data:
-                        inline_props = modified_comment_data["extensions"].get("inlineProperties", {})
+                        inline_props = modified_comment_data["extensions"].get(
+                            "inlineProperties", {}
+                        )
                         if inline_props:
                             # Map Server/Data Center format to API v2 format
                             modified_comment_data["inlineCommentProperties"] = {
-                                "textSelection": inline_props.get("originalSelection", ""),
-                                "textSelectionMatchCount": inline_props.get("numMatches", 1),
-                                "textSelectionMatchIndex": inline_props.get("matchIndex", 0)
+                                "textSelection": inline_props.get(
+                                    "originalSelection", ""
+                                ),
+                                "textSelectionMatchCount": inline_props.get(
+                                    "numMatches", 1
+                                ),
+                                "textSelectionMatchIndex": inline_props.get(
+                                    "matchIndex", 0
+                                ),
                             }
                             # Also add pageId from container
                             if "container" in modified_comment_data:
-                                modified_comment_data["pageId"] = modified_comment_data["container"].get("id")
+                                modified_comment_data["pageId"] = modified_comment_data[
+                                    "container"
+                                ].get("id")
                         # Set parent comment ID for Server/Data Center
                         modified_comment_data["parentCommentId"] = comment_id
 
@@ -965,20 +1109,28 @@ class InlineCommentsMixin(ConfluenceClient):
 
                 comment_models.append(comment_model)
 
-            logger.info(f"Retrieved {len(comment_models)} child comments for inline comment {comment_id}")
+            logger.info(
+                f"Retrieved {len(comment_models)} child comments for inline comment {comment_id}"
+            )
             return comment_models
 
         except requests.RequestException as e:
-            logger.error(f"Network error when fetching child comments for inline comment {comment_id}: {str(e)}")
-            if hasattr(e, 'response') and e.response is not None:
+            logger.error(
+                f"Network error when fetching child comments for inline comment {comment_id}: {str(e)}"
+            )
+            if hasattr(e, "response") and e.response is not None:
                 logger.error(f"Response status: {e.response.status_code}")
                 logger.error(f"Response body: {e.response.text}")
             return []
         except (ValueError, TypeError, KeyError) as e:
-            logger.error(f"Error processing child comments data for inline comment {comment_id}: {str(e)}")
+            logger.error(
+                f"Error processing child comments data for inline comment {comment_id}: {str(e)}"
+            )
             logger.debug("Full exception details for child comments", exc_info=True)
             return []
         except Exception as e:  # noqa: BLE001 - Intentional fallback with full logging
-            logger.error(f"Unexpected error fetching child comments for inline comment {comment_id}: {str(e)}")
+            logger.error(
+                f"Unexpected error fetching child comments for inline comment {comment_id}: {str(e)}"
+            )
             logger.debug("Full exception details for child comments", exc_info=True)
             return []
