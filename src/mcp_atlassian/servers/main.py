@@ -170,7 +170,9 @@ async def main_lifespan(app: FastMCP[MainAppContext]) -> AsyncIterator[dict[str,
                         ConfluenceClient as _ConfluenceClient,
                     )
 
-                    _ConfluenceClient(config=confluence_config)._validate_authentication()
+                    _ConfluenceClient(
+                        config=confluence_config
+                    )._validate_authentication()
                 except Exception as _e:
                     logger.error(
                         "Confluence token validation failed at startup — "

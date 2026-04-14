@@ -15,16 +15,20 @@ import sys
 import urllib.error
 import urllib.request
 
-UPSTREAM_URL = "https://raw.githubusercontent.com/sooperset/mcp-atlassian/main/pyproject.toml"
+UPSTREAM_URL = (
+    "https://raw.githubusercontent.com/sooperset/mcp-atlassian/main/pyproject.toml"
+)
 PYPROJECT_PATH = "pyproject.toml"
 
 # Pattern that matches the full `dependencies = [ ... ]` block (multiline)
-DEPS_PATTERN = re.compile(r"(^dependencies\s*=\s*\[)(.*?)(^\])", re.MULTILINE | re.DOTALL)
+DEPS_PATTERN = re.compile(
+    r"(^dependencies\s*=\s*\[)(.*?)(^\])", re.MULTILINE | re.DOTALL
+)
 
 
 def fetch_upstream() -> str:
     try:
-        with urllib.request.urlopen(UPSTREAM_URL, timeout=30) as resp:
+        with urllib.request.urlopen(UPSTREAM_URL, timeout=30) as resp:  # noqa: S310
             return resp.read().decode()
     except urllib.error.URLError as e:
         print(f"ERROR: Could not fetch upstream pyproject.toml: {e}", file=sys.stderr)

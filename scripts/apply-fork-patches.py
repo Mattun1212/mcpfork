@@ -32,9 +32,9 @@ PATCHES: list[dict] = [
     {
         "file": MAIN_PY,
         "marker": "# [fork] Validate token is actually reachable at startup",
-        "anchor": '                logger.info(\n'
-                  '                    "Jira configuration loaded and authentication is configured."\n'
-                  '                )\n',
+        "anchor": "                logger.info(\n"
+        '                    "Jira configuration loaded and authentication is configured."\n'
+        "                )\n",
         "patch": (
             "                # [fork] Validate token is actually reachable at startup\n"
             "                try:\n"
@@ -53,9 +53,9 @@ PATCHES: list[dict] = [
     {
         "file": MAIN_PY,
         "marker": "# [fork] Validate token is actually reachable at startup",
-        "anchor": '                logger.info(\n'
-                  '                    "Confluence configuration loaded and authentication is configured."\n'
-                  '                )\n',
+        "anchor": "                logger.info(\n"
+        '                    "Confluence configuration loaded and authentication is configured."\n'
+        "                )\n",
         "patch": (
             "                # [fork] Validate token is actually reachable at startup\n"
             "                try:\n"
@@ -63,7 +63,9 @@ PATCHES: list[dict] = [
             "                        ConfluenceClient as _ConfluenceClient,\n"
             "                    )\n"
             "\n"
-            "                    _ConfluenceClient(config=confluence_config)._validate_authentication()\n"
+            "                    _ConfluenceClient(\n"
+            "                        config=confluence_config\n"
+            "                    )._validate_authentication()\n"
             "                except Exception as _e:\n"
             "                    logger.error(\n"
             '                        "Confluence token validation failed at startup — "\n'
