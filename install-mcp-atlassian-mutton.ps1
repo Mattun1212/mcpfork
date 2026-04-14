@@ -69,6 +69,10 @@ function Main {
         Install-Git
     }
 
+    # Resolve uvx full path (avoid PATH lookup issues when Claude Code starts)
+    $uvxPath = (Get-Command uvx).Source
+    Write-Host "[OK] uvx path: $uvxPath"
+
     # Prompt for tokens
     Write-Host ""
     Write-Host "======================================"
@@ -105,7 +109,7 @@ function Main {
 
     $mcpConfig = [PSCustomObject]@{
         type    = "stdio"
-        command = "uvx"
+        command = $uvxPath
         args    = @(
             "--from", "git+https://github.com/Mattun1212/mcpfork.git",
             "mcp-atlassian"

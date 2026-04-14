@@ -90,6 +90,10 @@ main() {
         install_git
     fi
 
+    # Resolve uvx full path (avoid PATH lookup issues when Claude Code starts)
+    UVX_PATH=$(which uvx)
+    echo "[OK] uvx path: $UVX_PATH"
+
     # Prompt for tokens
     echo ""
     echo "======================================"
@@ -115,12 +119,13 @@ main() {
         exit 1
     fi
 
-    export JIRA_TOKEN CONFLUENCE_TOKEN
+    export JIRA_TOKEN CONFLUENCE_TOKEN UVX_PATH
     python3 <<'PYEOF'
 import json, os, sys
 
 jira_token = os.environ['JIRA_TOKEN']
 confluence_token = os.environ['CONFLUENCE_TOKEN']
+uvx_path = os.environ['UVX_PATH']
 claude_json_path = os.path.expanduser("~/.claude.json")
 
 with open(claude_json_path, 'r') as f:
@@ -131,7 +136,7 @@ if 'mcpServers' not in config:
 
 config['mcpServers']['mcp-atlassian-mutton'] = {
     "type": "stdio",
-    "command": "uvx",
+    "command": uvx_path,
     "args": [
         "--from", "git+https://github.com/Mattun1212/mcpfork.git",
         "mcp-atlassian"
