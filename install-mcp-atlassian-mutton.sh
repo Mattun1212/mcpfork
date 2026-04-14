@@ -84,11 +84,23 @@ main() {
     if ! check_uv; then
         install_uv
     fi
+    # Always ensure uv bin dir is in PATH — needed even when uv was pre-installed
+    # (macOS GUI apps and some shells don't source ~/.bashrc / ~/.zshrc)
+    export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 
     # Check/Install git (required for uvx --from git+https://...)
     if ! check_git; then
         install_git
     fi
+
+    # Resolve uvx full path — write absolute path to .claude.json so Claude Code
+    # finds it regardless of whether the user's PATH is set when the GUI app starts
+    UVX_PATH=$(which uvx)
+    if [ -z "$UVX_PATH" ]; then
+        echo "[FAIL] uvx not found after uv installation. Please check your uv installation."
+        exit 1
+    fi
+    echo "[OK] uvx path: $UVX_PATH"
 
     # Prompt for tokens
     echo ""
@@ -115,12 +127,13 @@ main() {
         exit 1
     fi
 
-    export JIRA_TOKEN CONFLUENCE_TOKEN
+    export JIRA_TOKEN CONFLUENCE_TOKEN UVX_PATH
     python3 <<'PYEOF'
 import json, os, sys
 
 jira_token = os.environ['JIRA_TOKEN']
 confluence_token = os.environ['CONFLUENCE_TOKEN']
+uvx_path = os.environ['UVX_PATH']
 claude_json_path = os.path.expanduser("~/.claude.json")
 
 with open(claude_json_path, 'r') as f:
@@ -131,7 +144,7 @@ if 'mcpServers' not in config:
 
 config['mcpServers']['mcp-atlassian-mutton'] = {
     "type": "stdio",
-    "command": "uvx",
+    "command": uvx_path,
     "args": [
         "--from", "git+https://github.com/Mattun1212/mcpfork.git",
         "mcp-atlassian"
