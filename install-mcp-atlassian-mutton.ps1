@@ -63,11 +63,18 @@ function Main {
     if (-not (Check-Uv)) {
         Install-Uv
     }
+    # Always refresh PATH so uvx is resolvable even if uv was pre-installed
+    $env:Path = "$env:USERPROFILE\.local\bin;" + [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
 
     # Check/Install git (required for uvx --from git+https://...)
     if (-not (Check-Git)) {
         Install-Git
     }
+
+    # Resolve uvx full path — write absolute path to .claude.json so Claude Code
+    # finds it regardless of whether the user's PATH is set when the GUI app starts
+    $uvxPath = (Get-Command uvx -ErrorAction Stop).Source
+    Write-Host "[OK] uvx path: $uvxPath"
 
     # Prompt for tokens
     Write-Host ""
@@ -105,7 +112,7 @@ function Main {
 
     $mcpConfig = [PSCustomObject]@{
         type    = "stdio"
-        command = "uvx"
+        command = $uvxPath
         args    = @(
             "--from", "git+https://github.com/Mattun1212/mcpfork.git",
             "mcp-atlassian"
