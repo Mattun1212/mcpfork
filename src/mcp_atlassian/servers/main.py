@@ -137,6 +137,18 @@ async def main_lifespan(app: FastMCP[MainAppContext]) -> AsyncIterator[dict[str,
                 logger.info(
                     "Jira configuration loaded and authentication is configured."
                 )
+                # [fork] Validate token is actually reachable at startup
+                try:
+                    from mcp_atlassian.jira.client import JiraClient as _JiraClient
+
+                    _JiraClient(config=jira_config)._validate_authentication()
+                except Exception as _e:
+                    logger.error(
+                        "Jira token validation failed at startup — "
+                        "check that JIRA_PERSONAL_TOKEN is correct and not expired: %s",
+                        _e,
+                    )
+                # [/fork]
             else:
                 logger.warning(
                     "Jira URL found, but authentication is not fully configured. Jira tools will be unavailable."
@@ -152,6 +164,20 @@ async def main_lifespan(app: FastMCP[MainAppContext]) -> AsyncIterator[dict[str,
                 logger.info(
                     "Confluence configuration loaded and authentication is configured."
                 )
+                # [fork] Validate token is actually reachable at startup
+                try:
+                    from mcp_atlassian.confluence.client import (
+                        ConfluenceClient as _ConfluenceClient,
+                    )
+
+                    _ConfluenceClient(config=confluence_config)._validate_authentication()
+                except Exception as _e:
+                    logger.error(
+                        "Confluence token validation failed at startup — "
+                        "check that CONFLUENCE_PERSONAL_TOKEN is correct and not expired: %s",
+                        _e,
+                    )
+                # [/fork]
             else:
                 logger.warning(
                     "Confluence URL found, but authentication is not fully configured. Confluence tools will be unavailable."

@@ -32,62 +32,105 @@ These features enable AI assistants to:
 
 ## Installation
 
-### Quick Install
+### Quick Install (uvx)
 
-**Mac/Linux:**
+No virtual environment or Python management needed — [uv](https://docs.astral.sh/uv/) handles everything.
+
+**1. Install uv** (if not already installed):
+
 ```bash
-pip install git+https://github.com/Mattun1212/mcpfork.git
+# Mac/Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Windows (PowerShell)
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 ```
 
-**Windows:**
-```powershell
-pip install git+https://github.com/Mattun1212/mcpfork.git
+**2. Add to Claude Code** (`~/.claude.json`):
+
+```json
+{
+  "mcpServers": {
+    "mcp-atlassian-mutton": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/Mattun1212/mcpfork.git", "mcp-atlassian"],
+      "env": {
+        "CONFLUENCE_URL": "https://confluence.rakuten-it.com/confluence",
+        "CONFLUENCE_PERSONAL_TOKEN": "YOUR_CONFLUENCE_PAT",
+        "JIRA_URL": "https://jira.rakuten-it.com/jira",
+        "JIRA_PERSONAL_TOKEN": "YOUR_JIRA_PAT"
+      }
+    }
+  }
+}
 ```
 
 ### Automated Installer
 
-For complete setup including Python environment and Claude Code configuration, use the automated installer:
+For complete setup including uv installation and Claude Code configuration, use the automated installer:
 
 1. Download installer:
-   - Mac/Linux: `install-mcp-atlassian.sh`
-   - Windows: `install-mcp-atlassian.ps1`
+   - Mac/Linux: `install-mcp-atlassian-mutton.sh`
+   - Windows: `install-mcp-atlassian-mutton.ps1`
 
 2. Run installer:
    ```bash
    # Mac/Linux
-   chmod +x install-mcp-atlassian.sh
-   ./install-mcp-atlassian.sh
+   chmod +x install-mcp-atlassian-mutton.sh
+   ./install-mcp-atlassian-mutton.sh
 
-   # Windows (as Administrator)
+   # Windows
    Set-ExecutionPolicy Bypass -Scope Process -Force
-   .\install-mcp-atlassian.ps1
+   .\install-mcp-atlassian-mutton.ps1
    ```
 
 The installer will:
-- Install Python 3.12 if needed
-- Create a virtual environment
-- Install this package
-- Configure Claude Code `.claude.json`
+- Install uv if needed
+- Prompt for API tokens
+- Configure Claude Code `~/.claude.json`
 
 ## Configuration
 
 ### For Claude Code
 
-Add to your `~/.claude.json`:
+Add to your `~/.claude.json`. Configuration is passed via environment variables:
 
+**Server/Data Center (PAT — token only, no username required):**
 ```json
 {
   "mcpServers": {
-    "atlassian": {
+    "mcp-atlassian-mutton": {
       "type": "stdio",
-      "command": "/path/to/venv/bin/mcp-atlassian",
-      "args": [
-        "--confluence-url", "https://your-domain.atlassian.net/wiki",
-        "--confluence-personal-token", "YOUR_CONFLUENCE_TOKEN",
-        "--jira-url", "https://your-domain.atlassian.net",
-        "--jira-username", "your-email@example.com",
-        "--jira-personal-token", "YOUR_JIRA_TOKEN"
-      ]
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/Mattun1212/mcpfork.git", "mcp-atlassian"],
+      "env": {
+        "CONFLUENCE_URL": "https://confluence.your-company.com",
+        "CONFLUENCE_PERSONAL_TOKEN": "YOUR_CONFLUENCE_PAT",
+        "JIRA_URL": "https://jira.your-company.com",
+        "JIRA_PERSONAL_TOKEN": "YOUR_JIRA_PAT"
+      }
+    }
+  }
+}
+```
+
+**Cloud (username + API token required):**
+```json
+{
+  "mcpServers": {
+    "mcp-atlassian-mutton": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/Mattun1212/mcpfork.git", "mcp-atlassian"],
+      "env": {
+        "CONFLUENCE_URL": "https://your-domain.atlassian.net/wiki",
+        "CONFLUENCE_USERNAME": "your-email@example.com",
+        "CONFLUENCE_API_TOKEN": "YOUR_CONFLUENCE_API_TOKEN",
+        "JIRA_URL": "https://your-domain.atlassian.net",
+        "JIRA_USERNAME": "your-email@example.com",
+        "JIRA_API_TOKEN": "YOUR_JIRA_API_TOKEN"
+      }
     }
   }
 }
@@ -95,17 +138,13 @@ Add to your `~/.claude.json`:
 
 ### Authentication
 
-**Confluence Cloud:**
-- Username + API token from https://id.atlassian.com/manage-profile/security/api-tokens
+| Deployment | Method | Required env vars |
+|-----------|--------|----------|
+| **Cloud** | Username + API Token | `CONFLUENCE_USERNAME`, `CONFLUENCE_API_TOKEN`, `JIRA_USERNAME`, `JIRA_API_TOKEN` |
+| **Server/Data Center** | Personal Access Token | `CONFLUENCE_PERSONAL_TOKEN`, `JIRA_PERSONAL_TOKEN` (username not needed) |
 
-**Confluence Server/Data Center:**
-- Personal Access Token from Profile → Personal Access Tokens
-
-**Jira Cloud:**
-- Username + API token from https://id.atlassian.com/manage-profile/security/api-tokens
-
-**Jira Server/Data Center:**
-- Personal Access Token from Profile → Personal Access Tokens
+- **Cloud API tokens**: https://id.atlassian.com/manage-profile/security/api-tokens
+- **Server/DC PAT**: Profile → Personal Access Tokens in your instance
 
 ## Usage
 
@@ -232,15 +271,17 @@ pytest
 
 ### Server/Data Center SSL Issues
 
-If using self-signed certificates:
+If using self-signed certificates, add SSL verification flags to the `env` block:
 
-```bash
-mcp-atlassian \
-  --confluence-url "https://your-server/confluence" \
-  --no-confluence-ssl-verify \
-  --jira-url "https://your-server/jira" \
-  --no-jira-ssl-verify \
-  ...
+```json
+"env": {
+  "CONFLUENCE_URL": "https://your-server/confluence",
+  "CONFLUENCE_PERSONAL_TOKEN": "YOUR_CONFLUENCE_PAT",
+  "CONFLUENCE_SSL_VERIFY": "false",
+  "JIRA_URL": "https://your-server/jira",
+  "JIRA_PERSONAL_TOKEN": "YOUR_JIRA_PAT",
+  "JIRA_SSL_VERIFY": "false"
+}
 ```
 
 ## License & Attribution
