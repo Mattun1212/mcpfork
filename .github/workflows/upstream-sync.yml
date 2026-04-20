@@ -1,27 +1,31 @@
-# .github/workflows/upstream-sync.yml
-#
-# Periodically checks sooperset/mcp-atlassian for new commits and
-# opens a pull request to merge them into this fork's main branch.
-#
-# Outcomes:
-#   - No upstream changes  → job exits silently
-#   - Clean merge           → opens a ready-to-review PR
-#   - Merge conflict        → opens a DRAFT PR with resolution instructions
-
 name: Sync from Upstream
 
 on:
   schedule:
-    - cron: '0 1 * * 1'  # Every Monday at 01:00 UTC (10:00 JST)
-  workflow_dispatch:       # Allow manual trigger
+    - cron: '0 1 * * 1' # Every Monday at 01:00 UTC (10:00 JST)
+  workflow_dispatch:
 
 permissions:
   contents: write
   pull-requests: write
+  actions: read
+
+concurrency:
+  group: upstream-sync-${{ github.repository }}
+  cancel-in-progress: false
+
+env:
+  UPSTREAM_REPO: sooperset/mcp-atlassian
+  UPSTREAM_REMOTE_URL: https://github.com/sooperset/mcp-atlassian.git
+  UPSTREAM_BRANCH: main
+  SYNC_BRANCH_PREFIX: sync/upstream-
+  SYNC_LABEL: upstream-sync
+  MANUAL_LABEL: manual-review
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout fork
@@ -31,206 +35,435 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure git
+        shell: bash
         run: |
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
 
       - name: Fetch upstream
+        shell: bash
         run: |
-          git remote add upstream https://github.com/sooperset/mcp-atlassian.git
-          git fetch upstream
+          git remote add upstream "${UPSTREAM_REMOTE_URL}" 2>/dev/null || true
+          git fetch --prune upstream "${UPSTREAM_BRANCH}"
 
-      # ── Check if upstream has anything new ──────────────────────────────
       - name: Check for new upstream commits
         id: check
+        shell: bash
         run: |
-          COUNT=$(git log --oneline HEAD..upstream/main | wc -l | tr -d ' ')
-          LATEST=$(git log --oneline upstream/main -1)
-          echo "upstream_commits=$COUNT"     >> "$GITHUB_OUTPUT"
-          echo "latest_commit=$LATEST"       >> "$GITHUB_OUTPUT"
-          if [ "$COUNT" -gt "0" ]; then
-            echo "has_updates=true"          >> "$GITHUB_OUTPUT"
-            echo "::notice::$COUNT new upstream commit(s) found."
+          set -euo pipefail
+
+          COUNT=$(git rev-list --count HEAD..upstream/${UPSTREAM_BRANCH})
+          LATEST=$(git log --oneline upstream/${UPSTREAM_BRANCH} -1 || true)
+
+          echo "upstream_commits=${COUNT}" >> "$GITHUB_OUTPUT"
+          echo "latest_commit<<EOF" >> "$GITHUB_OUTPUT"
+          echo "${LATEST}" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+          if [ "${COUNT}" -gt 0 ]; then
+            echo "has_updates=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::${COUNT} new upstream commit(s) found."
           else
-            echo "has_updates=false"         >> "$GITHUB_OUTPUT"
+            echo "has_updates=false" >> "$GITHUB_OUTPUT"
             echo "::notice::Fork is already up-to-date with upstream."
           fi
 
-      # ── Skip everything below when there is nothing to sync ─────────────
+          mkdir -p .github/upstream-sync
+          git log --oneline HEAD..upstream/${UPSTREAM_BRANCH} > .github/upstream-sync/upstream-commits.txt || true
+
+      - name: Upload upstream commit summary
+        if: steps.check.outputs.has_updates == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-sync-upstream-commits
+          path: .github/upstream-sync/upstream-commits.txt
+          if-no-files-found: error
+
       - name: Check for existing open sync PR
         if: steps.check.outputs.has_updates == 'true'
         id: existing_pr
+        uses: actions/github-script@v8
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SYNC_BRANCH_PREFIX: ${{ env.SYNC_BRANCH_PREFIX }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const prefix = process.env.SYNC_BRANCH_PREFIX;
+
+            const prs = await github.paginate(github.rest.pulls.list, {
+              owner,
+              repo,
+              state: 'open',
+              base: 'main',
+              per_page: 100
+            });
+
+            const syncPrs = prs.filter(pr => pr.head.ref.startsWith(prefix));
+
+            core.setOutput('open_prs', String(syncPrs.length));
+
+            if (syncPrs.length > 0) {
+              const pr = syncPrs[0];
+              core.setOutput('existing_pr_number', String(pr.number));
+              core.setOutput('existing_pr_branch', pr.head.ref);
+              core.notice(`An open sync PR already exists: #${pr.number} (${pr.head.ref})`);
+            } else {
+              core.notice('No open sync PR found.');
+            }
+
+      - name: Stop because an open sync PR already exists
+        if: |
+          steps.check.outputs.has_updates == 'true' &&
+          steps.existing_pr.outputs.open_prs != '0'
+        shell: bash
         run: |
-          COUNT=$(gh pr list \
-            --repo "${{ github.repository }}" \
-            --head "sync/upstream-" \
-            --state open \
-            --json number \
-            --jq 'length')
-          echo "open_prs=$COUNT" >> "$GITHUB_OUTPUT"
-          if [ "$COUNT" -gt "0" ]; then
-            echo "::notice::An open sync PR already exists — skipping new branch creation."
-          fi
+          echo "::notice::Skipping because open sync PR #${{ steps.existing_pr.outputs.existing_pr_number }} already exists on branch ${{ steps.existing_pr.outputs.existing_pr_branch }}."
 
       - name: Create sync branch
         if: |
           steps.check.outputs.has_updates == 'true' &&
           steps.existing_pr.outputs.open_prs == '0'
         id: branch
+        shell: bash
         run: |
-          BRANCH="sync/upstream-$(date +%Y%m%d)"
-          git checkout -b "$BRANCH"
-          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          BRANCH="${SYNC_BRANCH_PREFIX}$(date +%Y%m%d)-${GITHUB_RUN_NUMBER}"
+          git checkout -b "${BRANCH}"
+          echo "branch=${BRANCH}" >> "$GITHUB_OUTPUT"
+          echo "::notice::Created branch ${BRANCH}"
 
-      # ── Attempt automatic merge ──────────────────────────────────────────
       - name: Attempt merge
         if: |
           steps.check.outputs.has_updates == 'true' &&
           steps.existing_pr.outputs.open_prs == '0'
         id: merge
+        shell: bash
         run: |
-          if git merge upstream/main --no-edit; then
+          set -euo pipefail
+
+          mkdir -p .github/upstream-sync
+          : > .github/upstream-sync/auto-resolved-files.txt
+          : > .github/upstream-sync/manual-review-files.txt
+
+          # Add more known fork-patched files here as needed.
+          FORK_PATCHED_FILES=(
+            "src/mcp_atlassian/servers/main.py"
+          )
+
+          set +e
+          git merge "upstream/${UPSTREAM_BRANCH}" --no-edit
+          MERGE_EXIT=$?
+          set -e
+
+          if [ "${MERGE_EXIT}" -eq 0 ]; then
             echo "status=success" >> "$GITHUB_OUTPUT"
+            echo "manual_conflict_count=0" >> "$GITHUB_OUTPUT"
             echo "::notice::Merge succeeded with no conflicts."
-          else
-            echo "::notice::Merge has conflicts — attempting auto-resolution of fork-patched files."
+            exit 0
+          fi
 
-            # ── Auto-resolve known fork-patched files ──────────────────────
-            FORK_PATCHED_FILES="src/mcp_atlassian/servers/main.py"
-            ALL_CONFLICTS=$(git diff --name-only --diff-filter=U)
+          echo "::notice::Merge has conflicts — attempting safe auto-resolution."
 
-            for f in $FORK_PATCHED_FILES; do
-              if echo "$ALL_CONFLICTS" | grep -qF "$f"; then
-                echo "::notice::Auto-resolving $f — taking upstream then re-applying fork patches."
-                git checkout --theirs "$f"
-                git add "$f"
+          ALL_CONFLICTS="$(git diff --name-only --diff-filter=U || true)"
+
+          for f in "${FORK_PATCHED_FILES[@]}"; do
+            if echo "${ALL_CONFLICTS}" | grep -qFx "${f}"; then
+              echo "::notice::Auto-resolving known fork-patched file: ${f}"
+              git checkout --theirs "${f}"
+              git add "${f}"
+              echo "${f}" >> .github/upstream-sync/auto-resolved-files.txt
+            fi
+          done
+
+          if [ -f scripts/apply-fork-patches.py ]; then
+            python scripts/apply-fork-patches.py
+            for f in "${FORK_PATCHED_FILES[@]}"; do
+              if [ -e "${f}" ]; then
+                git add "${f}"
               fi
             done
-
-            # Re-apply fork patches (idempotent — skips if already present)
-            python scripts/apply-fork-patches.py
-            git add src/mcp_atlassian/servers/main.py
-
-            # Check if any conflicts remain
-            REMAINING=$(git diff --name-only --diff-filter=U)
-            if [ -z "$REMAINING" ]; then
-              git commit --no-edit
-              echo "status=success" >> "$GITHUB_OUTPUT"
-              echo "::notice::All conflicts auto-resolved via fork patches."
-            else
-              echo "status=conflict" >> "$GITHUB_OUTPUT"
-              {
-                echo "conflicts<<EOF"
-                echo "$REMAINING"
-                echo "EOF"
-              } >> "$GITHUB_OUTPUT"
-              echo "::warning::Unresolvable conflicts remain. Aborting."
-              git merge --abort
-            fi
+          else
+            echo "::warning::scripts/apply-fork-patches.py not found; skipping patch re-apply."
           fi
+
+          REMAINING="$(git diff --name-only --diff-filter=U || true)"
+
+          if [ -z "${REMAINING}" ]; then
+            git commit --no-edit
+            echo "status=success" >> "$GITHUB_OUTPUT"
+            echo "manual_conflict_count=0" >> "$GITHUB_OUTPUT"
+            echo "::notice::All conflicts auto-resolved."
+            exit 0
+          fi
+
+          echo "::warning::Some conflicts still require manual review."
+
+          while IFS= read -r f; do
+            [ -z "${f}" ] && continue
+            echo "::notice::Keeping fork version for manual review: ${f}"
+            git checkout --ours "${f}"
+            git add "${f}"
+            echo "${f}" >> .github/upstream-sync/manual-review-files.txt
+          done <<< "${REMAINING}"
+
+          git commit -m "chore: sync upstream with manual follow-up required"
+
+          {
+            echo "conflicts<<EOF"
+            cat .github/upstream-sync/manual-review-files.txt
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          MANUAL_COUNT=$(wc -l < .github/upstream-sync/manual-review-files.txt | tr -d ' ')
+          echo "manual_conflict_count=${MANUAL_COUNT}" >> "$GITHUB_OUTPUT"
+          echo "status=conflict" >> "$GITHUB_OUTPUT"
+          echo "::notice::Created merge commit with fork versions retained for manual-review files."
+
+      - name: Upload conflict summary
+        if: |
+          steps.check.outputs.has_updates == 'true' &&
+          steps.existing_pr.outputs.open_prs == '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-sync-diagnostics
+          path: .github/upstream-sync/
+          if-no-files-found: error
 
       - name: Push branch
         if: |
           steps.check.outputs.has_updates == 'true' &&
           steps.existing_pr.outputs.open_prs == '0'
+        shell: bash
         run: |
+          set -euo pipefail
           git push origin "${{ steps.branch.outputs.branch }}"
 
-      # ── Open PR: clean merge ─────────────────────────────────────────────
+      - name: Ensure labels exist
+        if: |
+          steps.check.outputs.has_updates == 'true' &&
+          steps.existing_pr.outputs.open_prs == '0'
+        uses: actions/github-script@v8
+        env:
+          SYNC_LABEL: ${{ env.SYNC_LABEL }}
+          MANUAL_LABEL: ${{ env.MANUAL_LABEL }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const labels = [
+              {
+                name: process.env.SYNC_LABEL,
+                color: '1D76DB',
+                description: 'Automated upstream sync pull requests'
+              },
+              {
+                name: process.env.MANUAL_LABEL,
+                color: 'D93F0B',
+                description: 'Requires manual conflict review'
+              }
+            ];
+
+            for (const label of labels) {
+              try {
+                await github.rest.issues.getLabel({
+                  owner,
+                  repo,
+                  name: label.name
+                });
+              } catch (error) {
+                if (error.status === 404) {
+                  await github.rest.issues.createLabel({
+                    owner,
+                    repo,
+                    ...label
+                  });
+                  core.notice(`Created label: ${label.name}`);
+                } else {
+                  throw error;
+                }
+              }
+            }
+
       - name: Create PR (clean merge)
         if: |
           steps.check.outputs.has_updates == 'true' &&
           steps.existing_pr.outputs.open_prs == '0' &&
           steps.merge.outputs.status == 'success'
-        uses: actions/github-script@v7
+        id: pr_clean
+        uses: actions/github-script@v8
+        env:
+          SYNC_LABEL: ${{ env.SYNC_LABEL }}
         with:
           script: |
-            const branch  = '${{ steps.branch.outputs.branch }}';
-            const count   = '${{ steps.check.outputs.upstream_commits }}';
-            const latest  = `${{ steps.check.outputs.latest_commit }}`;
-            const runUrl  = `${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const branch = '${{ steps.branch.outputs.branch }}';
+            const count = '${{ steps.check.outputs.upstream_commits }}';
+            const latest = `${{ steps.check.outputs.latest_commit }}`.trim();
+            const runUrl = `${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
+            const today = new Date().toISOString().slice(0, 10);
+
+            const body = [
+              '## Upstream Sync',
+              '',
+              `Automatic sync of **${count}** new commit(s) from [${process.env.UPSTREAM_REPO}](https://github.com/${process.env.UPSTREAM_REPO}).`,
+              '',
+              `Latest upstream commit: \`${latest}\``,
+              '',
+              '| Item | Status |',
+              '|---|---|',
+              '| Merge | ✅ Clean |',
+              '| Manual review | Not required |',
+              '| Tests | CI will run automatically on this PR |',
+              '',
+              '### Review checklist',
+              '- [ ] Review the diff',
+              '- [ ] Confirm CI passes',
+              '- [ ] Merge when ready',
+              '',
+              `[Workflow run](${runUrl})`
+            ].join('\n');
 
             const { data: pr } = await github.rest.pulls.create({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
-              title: `chore: sync ${count} upstream commit(s) — ${new Date().toISOString().slice(0,10)}`,
-              head:  branch,
-              base:  'main',
-              body: [
-                '## Upstream Sync',
-                '',
-                `Automatic sync of **${count}** new commit(s) from ` +
-                '[sooperset/mcp-atlassian](https://github.com/sooperset/mcp-atlassian).',
-                '',
-                `Latest upstream commit: \`${latest}\``,
-                '',
-                '| | Status |',
-                '|---|---|',
-                '| Merge | ✅ Clean (no conflicts) |',
-                `| Tests | CI will run automatically on this PR |`,
-                '',
-                '> Review the diff, confirm CI passes, then merge.',
-                '',
-                `[Workflow run](${runUrl})`,
-              ].join('\n'),
+              owner,
+              repo,
+              title: `chore: sync ${count} upstream commit(s) — ${today}`,
+              head: branch,
+              base: 'main',
+              body
             });
-            console.log(`Created PR #${pr.number}: ${pr.html_url}`);
 
-      # ── Open PR: conflicts detected ──────────────────────────────────────
-      - name: Create PR (conflict — manual resolution needed)
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number: pr.number,
+              labels: [process.env.SYNC_LABEL]
+            });
+
+            core.setOutput('pr_number', String(pr.number));
+            core.notice(`Created PR #${pr.number}: ${pr.html_url}`);
+
+      - name: Create PR (manual review needed)
         if: |
           steps.check.outputs.has_updates == 'true' &&
           steps.existing_pr.outputs.open_prs == '0' &&
           steps.merge.outputs.status == 'conflict'
-        uses: actions/github-script@v7
+        id: pr_conflict
+        uses: actions/github-script@v8
+        env:
+          SYNC_LABEL: ${{ env.SYNC_LABEL }}
+          MANUAL_LABEL: ${{ env.MANUAL_LABEL }}
+          UPSTREAM_REPO: ${{ env.UPSTREAM_REPO }}
         with:
           script: |
-            const branch    = '${{ steps.branch.outputs.branch }}';
-            const count     = '${{ steps.check.outputs.upstream_commits }}';
-            const latest    = `${{ steps.check.outputs.latest_commit }}`;
-            const conflicts = `${{ steps.merge.outputs.conflicts }}`;
-            const runUrl    = `${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
+            const fs = require('fs');
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const branch = '${{ steps.branch.outputs.branch }}';
+            const count = '${{ steps.check.outputs.upstream_commits }}';
+            const latest = `${{ steps.check.outputs.latest_commit }}`.trim();
+            const runUrl = `${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}`;
+
+            let files = [];
+            try {
+              const raw = fs.readFileSync('.github/upstream-sync/manual-review-files.txt', 'utf8');
+              files = raw.split('\n').map(s => s.trim()).filter(Boolean);
+            } catch (e) {
+              files = [];
+            }
+
+            const fileChecklist = files.length
+              ? files.map(f => `- [ ] \`${f}\``).join('\n')
+              : '- [ ] Review conflict areas';
+
+            const conflictTable = files.length
+              ? files.map(f => `| \`${f}\` | Fork version kept in this branch | Compare with upstream and reconcile manually |`).join('\n')
+              : '| _(unknown)_ | Fork version kept | Manual reconciliation required |';
+
+            const body = [
+              '## Upstream Sync — Manual Review Required',
+              '',
+              `This PR brings in **${count}** upstream commit(s) from [${process.env.UPSTREAM_REPO}](https://github.com/${process.env.UPSTREAM_REPO}).`,
+              '',
+              `Latest upstream commit: \`${latest}\``,
+              '',
+              'The automated sync completed, but some files could not be safely reconciled.',
+              'For those files, this branch intentionally keeps the **current fork version** so the PR remains reviewable and avoids destructive overwrite.',
+              '',
+              '### What was applied automatically',
+              '- Non-conflicting upstream changes were merged',
+              '- Known fork-patched files were resolved and patches were re-applied where possible',
+              '- A draft PR was opened for the remaining files that need human judgment',
+              '',
+              '### Files requiring manual review',
+              '',
+              '| File | Current state in this PR | Action needed |',
+              '|---|---|---|',
+              conflictTable,
+              '',
+              '### Recommended review flow',
+              '1. Review the PR diff for the safe upstream changes.',
+              '2. For each file listed above, compare this branch against `upstream/main`.',
+              '3. Re-apply any upstream changes that should be adopted in the fork.',
+              '4. Run tests.',
+              '5. Mark this PR ready and merge.',
+              '',
+              '### Checklist',
+              fileChecklist,
+              '- [ ] Run unit tests',
+              '- [ ] Confirm CI is green',
+              '',
+              '### Helpful commands',
+              '```bash',
+              `git fetch origin && git checkout ${branch}`,
+              'git remote add upstream https://github.com/sooperset/mcp-atlassian.git 2>/dev/null || true',
+              'git fetch upstream',
+              '',
+              '# compare one file against upstream',
+              'git diff HEAD..upstream/main -- path/to/file',
+              '',
+              '# after manual edits',
+              'uv run pytest tests/unit/ -q',
+              `git push origin ${branch}`,
+              '```',
+              '',
+              `[Workflow run](${runUrl})`
+            ].join('\n');
 
             const { data: pr } = await github.rest.pulls.create({
-              owner: context.repo.owner,
-              repo:  context.repo.repo,
-              title: `🔧 chore: sync upstream — manual conflict resolution needed`,
-              head:  branch,
-              base:  'main',
+              owner,
+              repo,
+              title: `🔧 chore: sync upstream (${count} commit(s)) — manual review needed`,
+              head: branch,
+              base: 'main',
               draft: true,
-              body: [
-                '## Upstream Sync — Manual Resolution Required',
-                '',
-                `**${count}** new commit(s) from upstream, but the merge has conflicts.`,
-                '',
-                `Latest upstream commit: \`${latest}\``,
-                '',
-                '### Conflicting files',
-                '```',
-                conflicts,
-                '```',
-                '',
-                '### How to resolve',
-                '```bash',
-                '# 1. Checkout the sync branch',
-                `git fetch origin && git checkout ${branch}`,
-                '',
-                '# 2. Merge upstream and resolve conflicts',
-                'git remote add upstream https://github.com/sooperset/mcp-atlassian.git 2>/dev/null || true',
-                'git fetch upstream',
-                'git merge upstream/main',
-                '# → resolve each conflict in your editor',
-                '',
-                '# 3. Run tests',
-                'uv run pytest tests/unit/ -q',
-                '',
-                '# 4. Push',
-                `git push origin ${branch}`,
-                '```',
-                '',
-                `[Workflow run](${runUrl})`,
-              ].join('\n'),
+              body
             });
-            console.log(`Created draft PR #${pr.number}: ${pr.html_url}`);
+
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number: pr.number,
+              labels: [process.env.SYNC_LABEL, process.env.MANUAL_LABEL]
+            });
+
+            core.setOutput('pr_number', String(pr.number));
+            core.notice(`Created draft PR #${pr.number}: ${pr.html_url}`);
+
+      - name: Summarize result
+        if: always()
+        shell: bash
+        run: |
+          if [ "${{ steps.check.outputs.has_updates || 'false' }}" != "true" ]; then
+            echo "::notice::No upstream updates."
+          elif [ "${{ steps.existing_pr.outputs.open_prs || '0' }}" != "0" ]; then
+            echo "::notice::Existing open sync PR found. No new PR created."
+          elif [ "${{ steps.merge.outputs.status || '' }}" = "success" ]; then
+            echo "::notice::Sync PR created successfully with clean merge."
+          elif [ "${{ steps.merge.outputs.status || '' }}" = "conflict" ]; then
+            echo "::warning::Draft sync PR created with manual-review files."
+          else
+            echo "::warning::Workflow completed in an unexpected state."
+          fi
