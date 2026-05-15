@@ -436,9 +436,15 @@ class AttachmentsMixin(ConfluenceClient, AttachmentsOperationsProto):
         """
         Upload attachment using direct REST API call.
 
-        This method uses the Confluence REST API directly to support
-        the minorEdit parameter, which is not available in the
-        atlassian-python-api library's attach_file() method.
+        # [fork] _upload_attachment_direct: POST + no-check for DC compatibility
+        Uses POST for both new and existing attachments, matching the
+        atlassian-python-api behaviour:
+          - New attachment:  POST /rest/api/content/{id}/child/attachment
+          - Update existing: POST /rest/api/content/{id}/child/attachment/{att_id}/data
+
+        Upstream uses PUT + ``X-Atlassian-Token: nocheck`` which causes 403
+        CSRF errors on Confluence Server/Data Center.
+        # [/fork]
 
         Args:
             content_id: The Confluence content ID
@@ -450,51 +456,67 @@ class AttachmentsMixin(ConfluenceClient, AttachmentsOperationsProto):
         Returns:
             Attachment metadata dict if successful, None otherwise
         """
+        file_handle = None
         try:
-            # Build the API endpoint URL
             base_url = self.config.url.rstrip("/")
-            url = f"{base_url}/rest/api/content/{content_id}/child/attachment"
+            base_path = f"rest/api/content/{content_id}/child/attachment"
 
-            # Prepare headers (X-Atlassian-Token required for file uploads)
-            headers = {"X-Atlassian-Token": "nocheck"}
+            # X-Atlassian-Token must be "no-check" (with hyphen) — Confluence Server/DC
+            # rejects "nocheck" (without hyphen) with a 403 CSRF error.
+            headers = {
+                "X-Atlassian-Token": "no-check",
+                "Accept": "application/json",
+            }
 
-            # Prepare multipart form data
-            files = {"file": (filename, open(file_path, "rb"))}
+            # Check if an attachment with this filename already exists so we can
+            # route to the correct endpoint (same logic as atlassian-python-api).
+            existing_id: str | None = None
+            try:
+                check_resp = self.confluence._session.get(
+                    f"{base_url}/{base_path}",
+                    headers=headers,
+                    params={"filename": filename},
+                )
+                if check_resp.status_code == 200:
+                    check_data = check_resp.json()
+                    results = check_data.get("results", [])
+                    if results:
+                        existing_id = results[0].get("id")
+            except Exception as check_err:
+                logger.debug(f"Could not check existing attachment: {check_err}")
 
-            # Comment must be sent with text/plain content-type for proper encoding
+            upload_url = (
+                f"{base_url}/{base_path}/{existing_id}/data"
+                if existing_id
+                else f"{base_url}/{base_path}"
+            )
+
+            file_handle = open(file_path, "rb")  # noqa: SIM115
+            files: dict[str, Any] = {"file": (filename, file_handle)}
             if comment:
                 files["comment"] = (None, comment, "text/plain; charset=utf-8")
 
-            data = {}
+            data: dict[str, str] = {}
             if minor_edit is not None:
                 data["minorEdit"] = str(minor_edit).lower()
 
-            # Use PUT to support creating new versions of existing attachments
-            # PUT will create a new attachment if it doesn't exist, OR create a new
-            # version if an attachment with the same filename already exists
-            response = self.confluence._session.put(
-                url, headers=headers, files=files, data=data
+            response = self.confluence._session.post(
+                upload_url, headers=headers, files=files, data=data
             )
             response.raise_for_status()
 
-            # Parse response
             result = response.json()
-
-            # Return first result if it's a list
             if isinstance(result, dict) and "results" in result:
-                results = result.get("results", [])
-                return results[0] if results else result
+                results_list = result.get("results", [])
+                return results_list[0] if results_list else result
             return result
 
         except Exception as e:
             logger.error(f"Direct API upload failed: {e}")
             return None
         finally:
-            # Close file handles (only for actual file objects, not text fields like comment)
-            if "files" in locals() and "file" in files:
-                file_tuple = files["file"]
-                if len(file_tuple) >= 2 and hasattr(file_tuple[1], "close"):
-                    file_tuple[1].close()
+            if file_handle is not None:
+                file_handle.close()
 
     def delete_attachment(self, attachment_id: str) -> dict[str, Any]:
         """

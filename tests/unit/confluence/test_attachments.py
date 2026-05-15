@@ -102,15 +102,20 @@ class TestAttachmentsMixin:
                 ]
             }
 
+        # Mock the GET check (no existing attachment) and POST upload
+        check_response = Mock()
+        check_response.status_code = 200
+        check_response.json.return_value = {"results": []}
+
         mock_response = Mock()
         if raise_error:
-            # Changed from .post to .put to match implementation
-            attachments_mixin.confluence._session.put.side_effect = raise_error
+            attachments_mixin.confluence._session.get.return_value = check_response
+            attachments_mixin.confluence._session.post.side_effect = raise_error
         else:
             mock_response.json.return_value = response_data
             mock_response.raise_for_status.return_value = None
-            # Changed from .post to .put to match implementation
-            attachments_mixin.confluence._session.put.return_value = mock_response
+            attachments_mixin.confluence._session.get.return_value = check_response
+            attachments_mixin.confluence._session.post.return_value = mock_response
 
         return mock_response
 
@@ -152,15 +157,14 @@ class TestAttachmentsMixin:
             assert result["id"] == "att12345"
 
             # Verify the REST API was called with correct parameters
-            # Changed from .post to .put to match implementation
-            attachments_mixin.confluence._session.put.assert_called_once()
-            call_args = attachments_mixin.confluence._session.put.call_args
+            attachments_mixin.confluence._session.post.assert_called_once()
+            call_args = attachments_mixin.confluence._session.post.call_args
 
             # Check URL
             assert "/rest/api/content/123456/child/attachment" in call_args[0][0]
 
-            # Check headers include X-Atlassian-Token
-            assert call_args[1]["headers"]["X-Atlassian-Token"] == "nocheck"
+            # Check headers use "no-check" (with hyphen) for DC/Server compatibility
+            assert call_args[1]["headers"]["X-Atlassian-Token"] == "no-check"
 
             # Check minorEdit was passed in data
             assert call_args[1]["data"]["minorEdit"] == "false"

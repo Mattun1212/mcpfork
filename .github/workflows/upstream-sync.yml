@@ -149,6 +149,7 @@ jobs:
           # Add more known fork-patched files here as needed.
           FORK_PATCHED_FILES=(
             "src/mcp_atlassian/servers/main.py"
+            "src/mcp_atlassian/confluence/attachments.py"
           )
 
           set +e
