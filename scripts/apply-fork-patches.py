@@ -124,11 +124,11 @@ PATCHES: list[dict] = [
             '        """\n'
             "        file_handle = None\n"
             "        try:\n"
-            "            base_url = self.config.url.rstrip(\"/\")\n"
-            "            base_path = f\"rest/api/content/{content_id}/child/attachment\"\n"
+            '            base_url = self.config.url.rstrip("/")\n'
+            '            base_path = f"rest/api/content/{content_id}/child/attachment"\n'
             "\n"
-            "            # X-Atlassian-Token must be \"no-check\" (with hyphen) — Confluence Server/DC\n"
-            "            # rejects \"nocheck\" (without hyphen) with a 403 CSRF error.\n"
+            '            # X-Atlassian-Token must be "no-check" (with hyphen) — Confluence Server/DC\n'
+            '            # rejects "nocheck" (without hyphen) with a 403 CSRF error.\n'
             "            headers = {\n"
             '                "X-Atlassian-Token": "no-check",\n'
             '                "Accept": "application/json",\n'
@@ -139,32 +139,32 @@ PATCHES: list[dict] = [
             "            existing_id: str | None = None\n"
             "            try:\n"
             "                check_resp = self.confluence._session.get(\n"
-            "                    f\"{base_url}/{base_path}\",\n"
+            '                    f"{base_url}/{base_path}",\n'
             "                    headers=headers,\n"
-            "                    params={\"filename\": filename},\n"
+            '                    params={"filename": filename},\n'
             "                )\n"
             "                if check_resp.status_code == 200:\n"
             "                    check_data = check_resp.json()\n"
-            "                    results = check_data.get(\"results\", [])\n"
+            '                    results = check_data.get("results", [])\n'
             "                    if results:\n"
-            "                        existing_id = results[0].get(\"id\")\n"
+            '                        existing_id = results[0].get("id")\n'
             "            except Exception as check_err:\n"
-            "                logger.debug(f\"Could not check existing attachment: {check_err}\")\n"
+            '                logger.debug(f"Could not check existing attachment: {check_err}")\n'
             "\n"
             "            upload_url = (\n"
-            "                f\"{base_url}/{base_path}/{existing_id}/data\"\n"
+            '                f"{base_url}/{base_path}/{existing_id}/data"\n'
             "                if existing_id\n"
-            "                else f\"{base_url}/{base_path}\"\n"
+            '                else f"{base_url}/{base_path}"\n'
             "            )\n"
             "\n"
-            "            file_handle = open(file_path, \"rb\")  # noqa: SIM115\n"
-            "            files: dict[str, Any] = {\"file\": (filename, file_handle)}\n"
+            '            file_handle = open(file_path, "rb")  # noqa: SIM115\n'
+            '            files: dict[str, Any] = {"file": (filename, file_handle)}\n'
             "            if comment:\n"
-            "                files[\"comment\"] = (None, comment, \"text/plain; charset=utf-8\")\n"
+            '                files["comment"] = (None, comment, "text/plain; charset=utf-8")\n'
             "\n"
             "            data: dict[str, str] = {}\n"
             "            if minor_edit is not None:\n"
-            "                data[\"minorEdit\"] = str(minor_edit).lower()\n"
+            '                data["minorEdit"] = str(minor_edit).lower()\n'
             "\n"
             "            response = self.confluence._session.post(\n"
             "                upload_url, headers=headers, files=files, data=data\n"
@@ -172,13 +172,13 @@ PATCHES: list[dict] = [
             "            response.raise_for_status()\n"
             "\n"
             "            result = response.json()\n"
-            "            if isinstance(result, dict) and \"results\" in result:\n"
-            "                results_list = result.get(\"results\", [])\n"
+            '            if isinstance(result, dict) and "results" in result:\n'
+            '                results_list = result.get("results", [])\n'
             "                return results_list[0] if results_list else result\n"
             "            return result\n"
             "\n"
             "        except Exception as e:\n"
-            "            logger.error(f\"Direct API upload failed: {e}\")\n"
+            '            logger.error(f"Direct API upload failed: {e}")\n'
             "            return None\n"
             "        finally:\n"
             "            if file_handle is not None:\n"
@@ -193,6 +193,7 @@ PATCHES: list[dict] = [
 # ---------------------------------------------------------------------------
 # Patch engine
 # ---------------------------------------------------------------------------
+
 
 def _apply_insert(patch: dict) -> bool:
     """Insert lines after ``anchor``. Returns True if applied."""
@@ -251,7 +252,9 @@ def _apply_replace(patch: dict) -> bool:
         )
         return False
 
-    patched = text[:start_idx] + patch["replacement"] + text[end_idx + len(end_anchor):]
+    patched = (
+        text[:start_idx] + patch["replacement"] + text[end_idx + len(end_anchor) :]
+    )
     path.write_text(patched, encoding="utf-8")
     print(f"[ok]   {path.name}: patch applied ({patch['marker']!r})")
     return True
