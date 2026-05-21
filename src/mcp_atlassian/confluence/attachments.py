@@ -1,6 +1,7 @@
 """Attachment operations for Confluence API."""
 
 import logging
+import mimetypes  # [fork] import mimetypes for MIME type detection
 import os
 from pathlib import Path
 from typing import Any
@@ -436,7 +437,7 @@ class AttachmentsMixin(ConfluenceClient, AttachmentsOperationsProto):
         """
         Upload attachment using direct REST API call.
 
-        # [fork] _upload_attachment_direct: POST + no-check for DC compatibility
+        # [fork] _upload_attachment_direct: POST + no-check + mime-type fix
         Uses POST for both new and existing attachments, matching the
         atlassian-python-api behaviour:
           - New attachment:  POST /rest/api/content/{id}/child/attachment
@@ -492,7 +493,9 @@ class AttachmentsMixin(ConfluenceClient, AttachmentsOperationsProto):
             )
 
             file_handle = open(file_path, "rb")  # noqa: SIM115
-            files: dict[str, Any] = {"file": (filename, file_handle)}
+            mime_type, _ = mimetypes.guess_type(filename)
+            mime_type = mime_type or "application/octet-stream"
+            files: dict[str, Any] = {"file": (filename, file_handle, mime_type)}
             if comment:
                 files["comment"] = (None, comment, "text/plain; charset=utf-8")
 

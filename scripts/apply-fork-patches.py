@@ -80,6 +80,13 @@ PATCHES: list[dict] = [
             "                # [/fork]\n"
         ),
     },
+    # ── confluence/attachments.py: add mimetypes import ─────────────────────
+    {
+        "file": ATTACHMENTS_PY,
+        "marker": "# [fork] import mimetypes for MIME type detection",
+        "anchor": "import logging\n",
+        "patch": "import mimetypes  # [fork] import mimetypes for MIME type detection\n",
+    },
     # ── confluence/attachments.py: fix _upload_attachment_direct ────────────
     # Upstream uses PUT + "nocheck" which fails on Confluence Server/DC with a
     # 403 CSRF error.  This fork uses POST (matching atlassian-python-api) and
@@ -87,7 +94,7 @@ PATCHES: list[dict] = [
     {
         "type": "replace",
         "file": ATTACHMENTS_PY,
-        "marker": "# [fork] _upload_attachment_direct: POST + no-check for DC compatibility",
+        "marker": "# [fork] _upload_attachment_direct: POST + no-check + mime-type fix",
         "anchor_start": "    def _upload_attachment_direct(\n",
         "anchor_end": "    def delete_attachment(",
         "replacement": (
@@ -102,7 +109,7 @@ PATCHES: list[dict] = [
             '        """\n'
             "        Upload attachment using direct REST API call.\n"
             "\n"
-            "        # [fork] _upload_attachment_direct: POST + no-check for DC compatibility\n"
+            "        # [fork] _upload_attachment_direct: POST + no-check + mime-type fix\n"
             "        Uses POST for both new and existing attachments, matching the\n"
             "        atlassian-python-api behaviour:\n"
             "          - New attachment:  POST /rest/api/content/{id}/child/attachment\n"
@@ -158,7 +165,9 @@ PATCHES: list[dict] = [
             "            )\n"
             "\n"
             '            file_handle = open(file_path, "rb")  # noqa: SIM115\n'
-            '            files: dict[str, Any] = {"file": (filename, file_handle)}\n'
+            '            mime_type, _ = mimetypes.guess_type(filename)\n'
+            '            mime_type = mime_type or "application/octet-stream"\n'
+            '            files: dict[str, Any] = {"file": (filename, file_handle, mime_type)}\n'
             "            if comment:\n"
             '                files["comment"] = (None, comment, "text/plain; charset=utf-8")\n'
             "\n"
