@@ -165,7 +165,7 @@ PATCHES: list[dict] = [
             "            )\n"
             "\n"
             '            file_handle = open(file_path, "rb")  # noqa: SIM115\n'
-            '            mime_type, _ = mimetypes.guess_type(filename)\n'
+            "            mime_type, _ = mimetypes.guess_type(filename)\n"
             '            mime_type = mime_type or "application/octet-stream"\n'
             '            files: dict[str, Any] = {"file": (filename, file_handle, mime_type)}\n'
             "            if comment:\n"

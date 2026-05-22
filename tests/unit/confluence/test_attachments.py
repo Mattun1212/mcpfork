@@ -134,6 +134,7 @@ class TestAttachmentsMixin:
             patch("os.path.abspath") as mock_abspath,
             patch("os.path.basename") as mock_basename,
             patch("builtins.open", mock_open(read_data=b"test content")),
+            patch("mimetypes.guess_type", return_value=("text/plain", None)),
         ):
             mock_exists.return_value = True
             mock_getsize.return_value = 100
@@ -183,6 +184,7 @@ class TestAttachmentsMixin:
             patch("os.path.abspath") as mock_abspath,
             patch("os.path.basename") as mock_basename,
             patch("builtins.open", mock_open(read_data=b"test content")),
+            patch("mimetypes.guess_type", return_value=("text/plain", None)),
         ):
             mock_exists.return_value = True
             mock_getsize.return_value = 100
@@ -259,6 +261,7 @@ class TestAttachmentsMixin:
             patch("os.path.basename") as mock_basename,
             patch("os.path.getsize") as mock_getsize,
             patch("builtins.open", mock_open(read_data=b"test content")),
+            patch("mimetypes.guess_type", return_value=("text/plain", None)),
         ):
             mock_exists.return_value = True
             mock_isabs.return_value = True
