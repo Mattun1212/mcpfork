@@ -272,8 +272,8 @@ class TestAttachmentsMixin:
 
             # Assertions
             assert result["success"] is False
-            # When direct API fails, we get generic failure message
-            assert "Failed to upload attachment" in result["error"]
+            # The actual error from the API is now propagated (not the generic message)
+            assert "API Error" in result["error"]
 
     # Tests for upload_attachments method
 

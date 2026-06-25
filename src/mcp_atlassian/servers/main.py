@@ -21,9 +21,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from mcp_atlassian.confluence import ConfluenceFetcher
 from mcp_atlassian.confluence.config import ConfluenceConfig
-from mcp_atlassian.jira import JiraFetcher
 from mcp_atlassian.jira.config import JiraConfig
 from mcp_atlassian.utils.env import is_env_truthy
 from mcp_atlassian.utils.environment import get_available_services
@@ -388,9 +386,7 @@ class AtlassianMCP(FastMCP[MainAppContext]):
         return app
 
 
-token_validation_cache: TTLCache[
-    int, tuple[bool, str | None, JiraFetcher | None, ConfluenceFetcher | None]
-] = TTLCache(maxsize=100, ttl=300)
+token_validation_cache = TTLCache(maxsize=100, ttl=300)
 
 
 class UserTokenMiddleware:

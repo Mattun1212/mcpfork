@@ -79,28 +79,17 @@ class AttachmentsMixin(ConfluenceClient, AttachmentsOperationsProto):
                 content_id, file_path, filename, comment, minor_edit
             )
 
-            if attachment:
-                file_size = os.path.getsize(file_path)
-                logger.info(
-                    f"Successfully uploaded attachment {filename} to content {content_id} (size: {file_size} bytes)"
-                )
-                return {
-                    "success": True,
-                    "content_id": content_id,
-                    "filename": filename,
-                    "size": file_size,
-                    "id": attachment.get("id")
-                    if isinstance(attachment, dict)
-                    else None,
-                }
-            else:
-                logger.error(
-                    f"Failed to upload attachment {filename} to content {content_id}"
-                )
-                return {
-                    "success": False,
-                    "error": f"Failed to upload attachment {filename} to content {content_id}",
-                }
+            file_size = os.path.getsize(file_path)
+            logger.info(
+                f"Successfully uploaded attachment {filename} to content {content_id} (size: {file_size} bytes)"
+            )
+            return {
+                "success": True,
+                "content_id": content_id,
+                "filename": filename,
+                "size": file_size,
+                "id": attachment.get("id") if isinstance(attachment, dict) else None,
+            }
 
         except Exception as e:
             error_msg = str(e)
@@ -513,7 +502,7 @@ class AttachmentsMixin(ConfluenceClient, AttachmentsOperationsProto):
 
         except Exception as e:
             logger.error(f"Direct API upload failed: {e}")
-            return None
+            raise
         finally:
             if file_handle is not None:
                 file_handle.close()
