@@ -136,7 +136,7 @@ confluence_token = os.environ['CONFLUENCE_TOKEN']
 uvx_path = os.environ['UVX_PATH']
 claude_json_path = os.path.expanduser("~/.claude.json")
 
-with open(claude_json_path, 'r') as f:
+with open(claude_json_path, 'r', encoding='utf-8') as f:
     config = json.load(f)
 
 if 'mcpServers' not in config:
@@ -147,6 +147,7 @@ config['mcpServers']['mcp-atlassian-mutton'] = {
     "command": uvx_path,
     "args": [
         "--from", "git+https://github.com/Mattun1212/mcpfork.git",
+        "--with", "atlassian-python-api<5",
         "mcp-atlassian"
     ],
     "env": {
@@ -157,8 +158,8 @@ config['mcpServers']['mcp-atlassian-mutton'] = {
     }
 }
 
-with open(claude_json_path, 'w') as f:
-    json.dump(config, f, indent=2)
+with open(claude_json_path, 'w', encoding='utf-8') as f:
+    json.dump(config, f, indent=2, ensure_ascii=False)
 
 print("Configuration updated successfully")
 PYEOF
