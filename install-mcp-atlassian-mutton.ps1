@@ -102,8 +102,9 @@ function Main {
         throw ".claude.json not found. Please run Claude Code first, then re-run this script."
     }
 
-    # Read and update JSON
-    $config = Get-Content $claudeJsonPath -Raw | ConvertFrom-Json
+    # Read and update JSON (explicit UTF-8 to avoid Shift-JIS misread on Japanese Windows)
+    $rawJson = [System.IO.File]::ReadAllText($claudeJsonPath, [System.Text.Encoding]::UTF8)
+    $config = $rawJson | ConvertFrom-Json
 
     # Add to top-level mcpServers (global, applies regardless of working directory)
     if (-not $config.mcpServers) {
@@ -115,6 +116,7 @@ function Main {
         command = $uvxPath
         args    = @(
             "--from", "git+https://github.com/Mattun1212/mcpfork.git",
+            "--with", "atlassian-python-api<5",
             "mcp-atlassian"
         )
         env     = [PSCustomObject]@{
