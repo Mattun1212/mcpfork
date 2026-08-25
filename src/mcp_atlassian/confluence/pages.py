@@ -1397,7 +1397,149 @@ class PagesMixin(ConfluenceClient):
             )
             raise Exception(f"Error getting page section: {str(e)}") from e
 
+    def _replace_section_in_soup(
+        self,
+        soup: BeautifulSoup,
+        heading: str,
+        new_content: str,
+        content_format: str,
+        title: str,
+    ) -> None:
+        """Replace one section's body in-place within a parsed soup.
+
+        The heading tag is preserved; all content between it and the
+        next same-or-higher-level heading is replaced with *new_content*.
+
+        Args:
+            soup: Parsed storage XML to mutate.
+            heading: Text (or substring) of the target heading.
+            new_content: Replacement content.
+            content_format: 'markdown' or 'storage'.
+            title: Page title, used for error messages.
+
+        Raises:
+            ValueError: If no heading matches.
+        """
+        target_tag = None
+        for tag in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"]):
+            if heading.lower() in tag.get_text(strip=True).lower():
+                target_tag = tag
+                break
+
+        if not target_tag:
+            raise ValueError(f"Heading '{heading}' not found in page '{title}'")
+
+        heading_level = int(target_tag.name[1])
+
+        # Remove siblings until the next same-or-higher-level heading
+        siblings_to_remove = []
+        for sibling in target_tag.next_siblings:
+            if (
+                hasattr(sibling, "name")
+                and sibling.name
+                and sibling.name in ["h1", "h2", "h3", "h4", "h5", "h6"]
+                and int(sibling.name[1]) <= heading_level
+            ):
+                break
+            siblings_to_remove.append(sibling)
+        for s in siblings_to_remove:
+            s.extract()
+
+        # Convert to storage XML if needed, then insert after heading
+        if content_format == "storage":
+            new_storage = new_content
+        else:
+            new_storage = self.preprocessor.markdown_to_confluence_storage(new_content)
+        new_soup = BeautifulSoup(new_storage, "html.parser")
+        new_nodes = list(new_soup.contents)
+        insert_point = target_tag
+        for node in new_nodes:
+            insert_point.insert_after(node)
+            insert_point = node  # type: ignore[assignment]
+
     @handle_auth_errors("Confluence API")
+    def update_page_sections(
+        self,
+        page_id: str,
+        sections: list[dict[str, str]],
+        *,
+        version_comment: str = "",
+        is_minor_edit: bool = False,
+    ) -> ConfluencePage:
+        """Replace the content of one or more sections in a single update.
+
+        The page is fetched once and written once, so updating several
+        sections bumps the version only once. Each heading tag is
+        preserved; all content between it and the next same-or-higher-
+        level heading is replaced.
+
+        Args:
+            page_id: The ID of the page.
+            sections: List of section specs. Each dict must have
+                'heading' and 'new_content', and may have
+                'content_format' ('markdown' default, or 'storage').
+            version_comment: Optional version comment (keyword-only).
+            is_minor_edit: Mark as minor edit (keyword-only).
+
+        Returns:
+            ConfluencePage model containing the updated page data.
+
+        Raises:
+            MCPAtlassianAuthenticationError: If authentication fails.
+            ValueError: If sections is empty or a heading is not found.
+            Exception: If there is an error updating the page.
+        """
+        if not sections:
+            raise ValueError("At least one section must be provided")
+
+        try:
+            v2_adapter = self._v2_adapter
+            if v2_adapter:
+                page = v2_adapter.get_page(
+                    page_id=page_id, expand="body.storage,version"
+                )
+            else:
+                page = self.confluence.get_page_by_id(
+                    page_id=page_id, expand="body.storage,version"
+                )
+
+            if isinstance(page, str):
+                raise Exception(f"API returned error response: {page[:500]}")
+
+            storage_xml = page.get("body", {}).get("storage", {}).get("value", "")
+            title = page.get("title", "")
+
+            soup = BeautifulSoup(storage_xml, "html.parser")
+
+            for section in sections:
+                heading = section.get("heading", "")
+                new_content = section.get("new_content", "")
+                content_format = section.get("content_format") or "markdown"
+                if not heading:
+                    raise ValueError("Each section must specify a 'heading'")
+                self._replace_section_in_soup(
+                    soup, heading, new_content, content_format, title
+                )
+
+            updated_storage_xml = str(soup)
+
+            return self.update_page(
+                page_id=page_id,
+                title=title,
+                body=updated_storage_xml,
+                is_markdown=False,
+                content_representation="storage",
+                version_comment=version_comment,
+                is_minor_edit=is_minor_edit,
+            )
+        except HTTPError:
+            raise
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.error(f"Error updating sections for page {page_id}: {str(e)}")
+            raise Exception(f"Error updating page sections: {str(e)}") from e
+
     def update_page_section(
         self,
         page_id: str,
@@ -1408,11 +1550,10 @@ class PagesMixin(ConfluenceClient):
         version_comment: str = "",
         is_minor_edit: bool = False,
     ) -> ConfluencePage:
-        """Replace the content of a section identified by its heading.
+        """Replace the content of a single section identified by its heading.
 
-        The heading tag itself is preserved; all content between this
-        heading and the next same-or-higher-level heading is replaced
-        with *new_content*.
+        Thin wrapper over :meth:`update_page_sections` for the common
+        single-section case.
 
         Args:
             page_id: The ID of the page.
@@ -1433,81 +1574,15 @@ class PagesMixin(ConfluenceClient):
             ValueError: If no heading matches.
             Exception: If there is an error updating the page.
         """
-        try:
-            v2_adapter = self._v2_adapter
-            if v2_adapter:
-                page = v2_adapter.get_page(
-                    page_id=page_id, expand="body.storage,version"
-                )
-            else:
-                page = self.confluence.get_page_by_id(
-                    page_id=page_id, expand="body.storage,version"
-                )
-
-            if isinstance(page, str):
-                raise Exception(f"API returned error response: {page[:500]}")
-
-            storage_xml = page.get("body", {}).get("storage", {}).get("value", "")
-            title = page.get("title", "")
-
-            soup = BeautifulSoup(storage_xml, "html.parser")
-
-            target_tag = None
-            for tag in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"]):
-                if heading.lower() in tag.get_text(strip=True).lower():
-                    target_tag = tag
-                    break
-
-            if not target_tag:
-                raise ValueError(f"Heading '{heading}' not found in page '{title}'")
-
-            heading_level = int(target_tag.name[1])
-
-            # Remove siblings until the next same-or-higher-level heading
-            siblings_to_remove = []
-            for sibling in target_tag.next_siblings:
-                if (
-                    hasattr(sibling, "name")
-                    and sibling.name
-                    and sibling.name in ["h1", "h2", "h3", "h4", "h5", "h6"]
-                    and int(sibling.name[1]) <= heading_level
-                ):
-                    break
-                siblings_to_remove.append(sibling)
-            for s in siblings_to_remove:
-                s.extract()
-
-            # Convert to storage XML if needed, then insert after heading
-            if content_format == "storage":
-                new_storage = new_content
-            else:
-                new_storage = self.preprocessor.markdown_to_confluence_storage(
-                    new_content
-                )
-            new_soup = BeautifulSoup(new_storage, "html.parser")
-            new_nodes = list(new_soup.contents)
-            insert_point = target_tag
-            for node in new_nodes:
-                insert_point.insert_after(node)
-                insert_point = node  # type: ignore[assignment]
-
-            updated_storage_xml = str(soup)
-
-            return self.update_page(
-                page_id=page_id,
-                title=title,
-                body=updated_storage_xml,
-                is_markdown=False,
-                content_representation="storage",
-                version_comment=version_comment,
-                is_minor_edit=is_minor_edit,
-            )
-        except HTTPError:
-            raise
-        except ValueError:
-            raise
-        except Exception as e:
-            logger.error(
-                f"Error updating section '{heading}' for page {page_id}: {str(e)}"
-            )
-            raise Exception(f"Error updating page section: {str(e)}") from e
+        return self.update_page_sections(
+            page_id,
+            [
+                {
+                    "heading": heading,
+                    "new_content": new_content,
+                    "content_format": content_format,
+                }
+            ],
+            version_comment=version_comment,
+            is_minor_edit=is_minor_edit,
+        )

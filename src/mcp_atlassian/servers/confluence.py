@@ -415,37 +415,24 @@ async def update_page_section(
         Field(description="The ID of the page to update"),
         BeforeValidator(lambda x: str(x)),
     ],
-    heading: Annotated[
-        str,
+    sections: Annotated[
+        list[dict[str, str]],
         Field(
             description=(
-                "Text (or substring) of the target heading whose section "
-                "will be replaced. Case-insensitive. Use get_page_outline "
-                "first to confirm the exact heading name."
-            )
-        ),
-    ],
-    new_content: Annotated[
-        str,
-        Field(
-            description=(
-                "Replacement content. Format is controlled by content_format. "
-                "Replaces everything between the matched heading and the next "
-                "same-or-higher-level heading. The heading itself is preserved."
-            )
-        ),
-    ],
-    content_format: Annotated[
-        str,
-        Field(
-            description=(
-                "Format of new_content: 'markdown' (default) or 'storage'. "
-                "Use 'storage' when passing raw Confluence storage XML obtained "
-                "from get_page_section with convert_to_markdown=false."
+                "One or more sections to replace. Each item is an object with "
+                "keys: 'heading' (required — substring of the target heading, "
+                "case-insensitive), 'new_content' (required — replacement body), "
+                "and 'content_format' (optional — 'markdown' default, or "
+                "'storage'). All sections are applied in a single page update, "
+                "so the version is bumped only once. Use get_page_outline first "
+                "to confirm heading names. "
+                'Example: [{"heading": "Goals", "new_content": "- Ship X"}, '
+                '{"heading": "Risks", "new_content": "None", '
+                '"content_format": "markdown"}]'
             ),
-            default="markdown",
+            min_length=1,
         ),
-    ] = "markdown",
+    ],
     version_comment: Annotated[
         str,
         Field(description="Optional comment for this version", default=""),
@@ -455,19 +442,18 @@ async def update_page_section(
         Field(description="Whether this is a minor edit", default=False),
     ] = False,
 ) -> str:
-    """Replace the content of a single section of a Confluence page.
+    """Replace the content of one or more sections of a Confluence page.
 
-    Preserves the heading tag and all other sections. Only the content
-    between the matched heading and the next same-or-higher-level heading
-    is replaced. Much cheaper than sending the full page body when editing
-    one section of a large PRD.
+    Preserves each heading tag and all sections not listed. For every
+    section, only the content between the matched heading and the next
+    same-or-higher-level heading is replaced. All edits are applied in a
+    single fetch-and-update, so the page version is bumped only once —
+    much cheaper than sending the full page body when editing a large PRD.
 
     Args:
         ctx: The FastMCP context.
         page_id: Confluence page ID.
-        heading: Substring of the target heading text.
-        new_content: Replacement content (markdown or storage XML).
-        content_format: 'markdown' (default) or 'storage'.
+        sections: List of sections to replace.
         version_comment: Optional version comment.
         is_minor_edit: Mark as minor edit.
 
@@ -476,31 +462,29 @@ async def update_page_section(
     """
     confluence_fetcher = await get_confluence_fetcher(ctx)
     try:
-        page_object = confluence_fetcher.update_page_section(
+        page_object = confluence_fetcher.update_page_sections(
             page_id,
-            heading,
-            new_content,
-            content_format=content_format,
+            sections,
             version_comment=version_comment,
             is_minor_edit=is_minor_edit,
         )
         result = page_object.to_simplified_dict()
         result.pop("content", None)
+        count = len(sections)
         return json.dumps(
-            {"message": "Section updated successfully", "page": result},
+            {
+                "message": f"{count} section(s) updated successfully",
+                "page": result,
+            },
             indent=2,
             ensure_ascii=False,
         )
     except ValueError as e:
         return json.dumps({"error": str(e)}, indent=2, ensure_ascii=False)
     except Exception as e:
-        logger.error(f"Error updating section '{heading}' for page '{page_id}': {e}")
+        logger.error(f"Error updating sections for page '{page_id}': {e}")
         return json.dumps(
-            {
-                "error": (
-                    f"Failed to update section '{heading}' for page '{page_id}': {e}"
-                )
-            },
+            {"error": f"Failed to update sections for page '{page_id}': {e}"},
             indent=2,
             ensure_ascii=False,
         )
