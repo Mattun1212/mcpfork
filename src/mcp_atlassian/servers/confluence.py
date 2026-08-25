@@ -247,6 +247,277 @@ async def get_page(
 
 @confluence_mcp.tool(
     tags={"confluence", "read", "toolset:confluence_pages"},
+    annotations={"title": "Get Page Version", "readOnlyHint": True},
+)
+async def get_page_version(
+    ctx: Context,
+    page_id: Annotated[
+        str,
+        Field(
+            description=(
+                "Confluence page ID (numeric). Found in the page URL, e.g. "
+                "'123456789' in '.../pages/123456789/...'."
+            )
+        ),
+        BeforeValidator(lambda x: str(x)),
+    ],
+) -> str:
+    """Get only the version number and basic metadata of a Confluence page.
+
+    Returns id, title, current version number, and URL without fetching
+    the full page body. Use this instead of get_page when you only need
+    to know the current version before updating.
+
+    Args:
+        ctx: The FastMCP context.
+        page_id: Confluence page ID.
+
+    Returns:
+        JSON string with id, title, version, and url.
+    """
+    confluence_fetcher = await get_confluence_fetcher(ctx)
+    try:
+        result = confluence_fetcher.get_page_version(page_id)
+        return json.dumps(result, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logger.error(f"Error getting version for page '{page_id}': {e}")
+        return json.dumps(
+            {"error": f"Failed to get page version for '{page_id}': {e}"},
+            indent=2,
+            ensure_ascii=False,
+        )
+
+
+@confluence_mcp.tool(
+    tags={"confluence", "read", "toolset:confluence_pages"},
+    annotations={"title": "Get Page Outline", "readOnlyHint": True},
+)
+async def get_page_outline(
+    ctx: Context,
+    page_id: Annotated[
+        str,
+        Field(
+            description=(
+                "Confluence page ID (numeric). Found in the page URL, e.g. "
+                "'123456789' in '.../pages/123456789/...'."
+            )
+        ),
+        BeforeValidator(lambda x: str(x)),
+    ],
+) -> str:
+    """Get the heading structure of a Confluence page without its full content.
+
+    Returns only the list of headings (level + text) and the current
+    version number. Use this to discover section names before calling
+    get_page_section or update_page_section.
+
+    Args:
+        ctx: The FastMCP context.
+        page_id: Confluence page ID.
+
+    Returns:
+        JSON string with id, title, version, and headings list.
+    """
+    confluence_fetcher = await get_confluence_fetcher(ctx)
+    try:
+        result = confluence_fetcher.get_page_outline(page_id)
+        return json.dumps(result, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logger.error(f"Error getting outline for page '{page_id}': {e}")
+        return json.dumps(
+            {"error": f"Failed to get page outline for '{page_id}': {e}"},
+            indent=2,
+            ensure_ascii=False,
+        )
+
+
+@confluence_mcp.tool(
+    tags={"confluence", "read", "toolset:confluence_pages"},
+    annotations={"title": "Get Page Section", "readOnlyHint": True},
+)
+async def get_page_section(
+    ctx: Context,
+    page_id: Annotated[
+        str,
+        Field(
+            description=(
+                "Confluence page ID (numeric). Found in the page URL, e.g. "
+                "'123456789' in '.../pages/123456789/...'."
+            )
+        ),
+        BeforeValidator(lambda x: str(x)),
+    ],
+    heading: Annotated[
+        str,
+        Field(
+            description=(
+                "Text (or substring) of the target heading. "
+                "Case-insensitive. The first matching heading is used. "
+                "Use get_page_outline first to discover exact heading names."
+            )
+        ),
+    ],
+    content_format: Annotated[
+        str,
+        Field(
+            description=(
+                "Format of the returned content: 'markdown' (default) or 'storage'. "
+                "Use 'storage' when you need to edit and re-submit the content via "
+                "update_page_section with content_format='storage' — this preserves "
+                "Confluence macros and structured XML that markdown conversion may lose."
+            ),
+            default="markdown",
+        ),
+    ] = "markdown",
+) -> str:
+    """Get the content of a single section of a Confluence page by heading.
+
+    Returns only the content between the matched heading and the next
+    heading of the same or higher level. Much cheaper than fetching the
+    full page when you only need one section.
+
+    Args:
+        ctx: The FastMCP context.
+        page_id: Confluence page ID.
+        heading: Substring of the target heading text.
+        content_format: 'markdown' (default) or 'storage'.
+
+    Returns:
+        JSON string with id, title, version, matched heading, content,
+        and content_format ('markdown' or 'storage').
+    """
+    confluence_fetcher = await get_confluence_fetcher(ctx)
+    try:
+        result = confluence_fetcher.get_page_section(
+            page_id, heading, content_format=content_format
+        )
+        return json.dumps(result, indent=2, ensure_ascii=False)
+    except ValueError as e:
+        return json.dumps({"error": str(e)}, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logger.error(
+            f"Error getting section '{heading}' for page '{page_id}': {e}"
+        )
+        return json.dumps(
+            {
+                "error": (
+                    f"Failed to get section '{heading}' "
+                    f"for page '{page_id}': {e}"
+                )
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+
+
+@confluence_mcp.tool(
+    tags={"confluence", "write", "toolset:confluence_pages"},
+    annotations={"title": "Update Page Section", "destructiveHint": True},
+)
+@check_write_access
+async def update_page_section(
+    ctx: Context,
+    page_id: Annotated[
+        str,
+        Field(description="The ID of the page to update"),
+        BeforeValidator(lambda x: str(x)),
+    ],
+    heading: Annotated[
+        str,
+        Field(
+            description=(
+                "Text (or substring) of the target heading whose section "
+                "will be replaced. Case-insensitive. Use get_page_outline "
+                "first to confirm the exact heading name."
+            )
+        ),
+    ],
+    new_content: Annotated[
+        str,
+        Field(
+            description=(
+                "Replacement content. Format is controlled by content_format. "
+                "Replaces everything between the matched heading and the next "
+                "same-or-higher-level heading. The heading itself is preserved."
+            )
+        ),
+    ],
+    content_format: Annotated[
+        str,
+        Field(
+            description=(
+                "Format of new_content: 'markdown' (default) or 'storage'. "
+                "Use 'storage' when passing raw Confluence storage XML obtained "
+                "from get_page_section with convert_to_markdown=false."
+            ),
+            default="markdown",
+        ),
+    ] = "markdown",
+    version_comment: Annotated[
+        str,
+        Field(description="Optional comment for this version", default=""),
+    ] = "",
+    is_minor_edit: Annotated[
+        bool,
+        Field(description="Whether this is a minor edit", default=False),
+    ] = False,
+) -> str:
+    """Replace the content of a single section of a Confluence page.
+
+    Preserves the heading tag and all other sections. Only the content
+    between the matched heading and the next same-or-higher-level heading
+    is replaced. Much cheaper than sending the full page body when editing
+    one section of a large PRD.
+
+    Args:
+        ctx: The FastMCP context.
+        page_id: Confluence page ID.
+        heading: Substring of the target heading text.
+        new_content: Replacement content (markdown or storage XML).
+        content_format: 'markdown' (default) or 'storage'.
+        version_comment: Optional version comment.
+        is_minor_edit: Mark as minor edit.
+
+    Returns:
+        JSON string with the updated page metadata.
+    """
+    confluence_fetcher = await get_confluence_fetcher(ctx)
+    try:
+        page_object = confluence_fetcher.update_page_section(
+            page_id,
+            heading,
+            new_content,
+            content_format=content_format,
+            version_comment=version_comment,
+            is_minor_edit=is_minor_edit,
+        )
+        result = page_object.to_simplified_dict()
+        result.pop("content", None)
+        return json.dumps(
+            {"message": "Section updated successfully", "page": result},
+            indent=2,
+            ensure_ascii=False,
+        )
+    except ValueError as e:
+        return json.dumps({"error": str(e)}, indent=2, ensure_ascii=False)
+    except Exception as e:
+        logger.error(
+            f"Error updating section '{heading}' for page '{page_id}': {e}"
+        )
+        return json.dumps(
+            {
+                "error": (
+                    f"Failed to update section '{heading}' "
+                    f"for page '{page_id}': {e}"
+                )
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+
+
+@confluence_mcp.tool(
+    tags={"confluence", "read", "toolset:confluence_pages"},
     annotations={"title": "Get Page Children", "readOnlyHint": True},
 )
 async def get_page_children(
