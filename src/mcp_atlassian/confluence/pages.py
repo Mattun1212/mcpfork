@@ -5,6 +5,7 @@ import logging
 from typing import Any
 
 import requests
+from bs4 import BeautifulSoup
 from requests.exceptions import HTTPError
 
 from ..models.confluence import ConfluencePage
@@ -1200,3 +1201,313 @@ class PagesMixin(ConfluenceClient):
             "to_version": to_version,
             "diff": diff_string,
         }
+
+    @handle_auth_errors("Confluence API")
+    def get_page_version(self, page_id: str) -> dict[str, Any]:
+        """Get only the version number and basic metadata of a page.
+
+        Args:
+            page_id: The ID of the page.
+
+        Returns:
+            Dict with id, title, version number, and url.
+
+        Raises:
+            MCPAtlassianAuthenticationError: If authentication fails.
+            Exception: If there is an error retrieving the page.
+        """
+        try:
+            v2_adapter = self._v2_adapter
+            if v2_adapter:
+                page = v2_adapter.get_page(page_id=page_id, expand="version")
+            else:
+                page = self.confluence.get_page_by_id(page_id=page_id, expand="version")
+
+            if isinstance(page, str):
+                raise Exception(f"API returned error response: {page[:500]}")
+
+            version = page.get("version", {}).get("number", 0)
+            title = page.get("title", "")
+            links = page.get("_links", {})
+            web_ui = links.get("webui", "")
+            url = (
+                f"{self.config.url}{web_ui}"
+                if web_ui
+                else f"{self.config.url}/pages/{page_id}"
+            )
+
+            return {"id": page_id, "title": title, "version": version, "url": url}
+        except HTTPError:
+            raise
+        except Exception as e:
+            logger.error(f"Error getting version for page {page_id}: {str(e)}")
+            raise Exception(f"Error getting page version: {str(e)}") from e
+
+    @handle_auth_errors("Confluence API")
+    def get_page_outline(self, page_id: str) -> dict[str, Any]:
+        """Get the heading structure of a page without its full content.
+
+        Args:
+            page_id: The ID of the page.
+
+        Returns:
+            Dict with id, title, version, and a list of headings
+            (each with level and text).
+
+        Raises:
+            MCPAtlassianAuthenticationError: If authentication fails.
+            Exception: If there is an error retrieving the page.
+        """
+        try:
+            v2_adapter = self._v2_adapter
+            if v2_adapter:
+                page = v2_adapter.get_page(
+                    page_id=page_id, expand="body.storage,version"
+                )
+            else:
+                page = self.confluence.get_page_by_id(
+                    page_id=page_id, expand="body.storage,version"
+                )
+
+            if isinstance(page, str):
+                raise Exception(f"API returned error response: {page[:500]}")
+
+            storage_xml = page.get("body", {}).get("storage", {}).get("value", "")
+            version = page.get("version", {}).get("number", 0)
+            title = page.get("title", "")
+
+            soup = BeautifulSoup(storage_xml, "html.parser")
+            headings = [
+                {"level": int(tag.name[1]), "text": tag.get_text(strip=True)}
+                for tag in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"])
+            ]
+
+            return {
+                "id": page_id,
+                "title": title,
+                "version": version,
+                "headings": headings,
+            }
+        except HTTPError:
+            raise
+        except Exception as e:
+            logger.error(f"Error getting outline for page {page_id}: {str(e)}")
+            raise Exception(f"Error getting page outline: {str(e)}") from e
+
+    @handle_auth_errors("Confluence API")
+    def get_page_section(
+        self,
+        page_id: str,
+        heading: str,
+        *,
+        content_format: str = "markdown",
+    ) -> dict[str, Any]:
+        """Get the content of a section identified by its heading text.
+
+        The match is case-insensitive and partial (the first heading
+        whose text contains *heading* is used).
+
+        Args:
+            page_id: The ID of the page.
+            heading: Text (or substring) of the target heading.
+            content_format: 'markdown' (default) or 'storage'. Controls
+                whether the returned content is converted to markdown or
+                returned as raw Confluence storage XML (keyword-only).
+
+        Returns:
+            Dict with id, title, version, matched heading text, content,
+            and content_format ('markdown' or 'storage').
+
+        Raises:
+            MCPAtlassianAuthenticationError: If authentication fails.
+            ValueError: If no heading matches.
+            Exception: If there is an error retrieving the page.
+        """
+        try:
+            v2_adapter = self._v2_adapter
+            if v2_adapter:
+                page = v2_adapter.get_page(
+                    page_id=page_id, expand="body.storage,version,space"
+                )
+            else:
+                page = self.confluence.get_page_by_id(
+                    page_id=page_id, expand="body.storage,version,space"
+                )
+
+            if isinstance(page, str):
+                raise Exception(f"API returned error response: {page[:500]}")
+
+            storage_xml = page.get("body", {}).get("storage", {}).get("value", "")
+            version = page.get("version", {}).get("number", 0)
+            title = page.get("title", "")
+            space_key = page.get("space", {}).get("key", "")
+
+            soup = BeautifulSoup(storage_xml, "html.parser")
+
+            target_tag = None
+            for tag in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"]):
+                if heading.lower() in tag.get_text(strip=True).lower():
+                    target_tag = tag
+                    break
+
+            if not target_tag:
+                raise ValueError(f"Heading '{heading}' not found in page '{title}'")
+
+            heading_level = int(target_tag.name[1])
+            section_parts = [str(target_tag)]
+            for sibling in target_tag.next_siblings:
+                if (
+                    hasattr(sibling, "name")
+                    and sibling.name
+                    and sibling.name in ["h1", "h2", "h3", "h4", "h5", "h6"]
+                    and int(sibling.name[1]) <= heading_level
+                ):
+                    break
+                section_parts.append(str(sibling))
+
+            section_html = "".join(section_parts)
+
+            if content_format == "storage":
+                content = section_html
+            else:
+                _, content = self.preprocessor.process_html_content(
+                    section_html,
+                    space_key=space_key,
+                    confluence_client=self.confluence,
+                    content_id=page_id,
+                    attachments=[],
+                )
+                content_format = "markdown"
+
+            return {
+                "id": page_id,
+                "title": title,
+                "version": version,
+                "heading": target_tag.get_text(strip=True),
+                "content": content,
+                "content_format": content_format,
+            }
+        except HTTPError:
+            raise
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.error(
+                f"Error getting section '{heading}' for page {page_id}: {str(e)}"
+            )
+            raise Exception(f"Error getting page section: {str(e)}") from e
+
+    @handle_auth_errors("Confluence API")
+    def update_page_section(
+        self,
+        page_id: str,
+        heading: str,
+        new_content: str,
+        *,
+        content_format: str = "markdown",
+        version_comment: str = "",
+        is_minor_edit: bool = False,
+    ) -> ConfluencePage:
+        """Replace the content of a section identified by its heading.
+
+        The heading tag itself is preserved; all content between this
+        heading and the next same-or-higher-level heading is replaced
+        with *new_content*.
+
+        Args:
+            page_id: The ID of the page.
+            heading: Text (or substring) of the target heading.
+            new_content: Replacement content. Format is controlled by
+                *content_format*.
+            content_format: 'markdown' (default) or 'storage'. When
+                'storage', *new_content* is treated as raw Confluence
+                storage XML and inserted verbatim (keyword-only).
+            version_comment: Optional version comment (keyword-only).
+            is_minor_edit: Mark as minor edit (keyword-only).
+
+        Returns:
+            ConfluencePage model containing the updated page data.
+
+        Raises:
+            MCPAtlassianAuthenticationError: If authentication fails.
+            ValueError: If no heading matches.
+            Exception: If there is an error updating the page.
+        """
+        try:
+            v2_adapter = self._v2_adapter
+            if v2_adapter:
+                page = v2_adapter.get_page(
+                    page_id=page_id, expand="body.storage,version"
+                )
+            else:
+                page = self.confluence.get_page_by_id(
+                    page_id=page_id, expand="body.storage,version"
+                )
+
+            if isinstance(page, str):
+                raise Exception(f"API returned error response: {page[:500]}")
+
+            storage_xml = page.get("body", {}).get("storage", {}).get("value", "")
+            title = page.get("title", "")
+
+            soup = BeautifulSoup(storage_xml, "html.parser")
+
+            target_tag = None
+            for tag in soup.find_all(["h1", "h2", "h3", "h4", "h5", "h6"]):
+                if heading.lower() in tag.get_text(strip=True).lower():
+                    target_tag = tag
+                    break
+
+            if not target_tag:
+                raise ValueError(f"Heading '{heading}' not found in page '{title}'")
+
+            heading_level = int(target_tag.name[1])
+
+            # Remove siblings until the next same-or-higher-level heading
+            siblings_to_remove = []
+            for sibling in target_tag.next_siblings:
+                if (
+                    hasattr(sibling, "name")
+                    and sibling.name
+                    and sibling.name in ["h1", "h2", "h3", "h4", "h5", "h6"]
+                    and int(sibling.name[1]) <= heading_level
+                ):
+                    break
+                siblings_to_remove.append(sibling)
+            for s in siblings_to_remove:
+                s.extract()
+
+            # Convert to storage XML if needed, then insert after heading
+            if content_format == "storage":
+                new_storage = new_content
+            else:
+                new_storage = self.preprocessor.markdown_to_confluence_storage(
+                    new_content
+                )
+            new_soup = BeautifulSoup(new_storage, "html.parser")
+            new_nodes = list(new_soup.contents)
+            insert_point = target_tag
+            for node in new_nodes:
+                insert_point.insert_after(node)
+                insert_point = node  # type: ignore[assignment]
+
+            updated_storage_xml = str(soup)
+
+            return self.update_page(
+                page_id=page_id,
+                title=title,
+                body=updated_storage_xml,
+                is_markdown=False,
+                content_representation="storage",
+                version_comment=version_comment,
+                is_minor_edit=is_minor_edit,
+            )
+        except HTTPError:
+            raise
+        except ValueError:
+            raise
+        except Exception as e:
+            logger.error(
+                f"Error updating section '{heading}' for page {page_id}: {str(e)}"
+            )
+            raise Exception(f"Error updating page section: {str(e)}") from e
