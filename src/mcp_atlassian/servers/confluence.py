@@ -395,16 +395,9 @@ async def get_page_section(
     except ValueError as e:
         return json.dumps({"error": str(e)}, indent=2, ensure_ascii=False)
     except Exception as e:
-        logger.error(
-            f"Error getting section '{heading}' for page '{page_id}': {e}"
-        )
+        logger.error(f"Error getting section '{heading}' for page '{page_id}': {e}")
         return json.dumps(
-            {
-                "error": (
-                    f"Failed to get section '{heading}' "
-                    f"for page '{page_id}': {e}"
-                )
-            },
+            {"error": (f"Failed to get section '{heading}' for page '{page_id}': {e}")},
             indent=2,
             ensure_ascii=False,
         )
@@ -501,14 +494,11 @@ async def update_page_section(
     except ValueError as e:
         return json.dumps({"error": str(e)}, indent=2, ensure_ascii=False)
     except Exception as e:
-        logger.error(
-            f"Error updating section '{heading}' for page '{page_id}': {e}"
-        )
+        logger.error(f"Error updating section '{heading}' for page '{page_id}': {e}")
         return json.dumps(
             {
                 "error": (
-                    f"Failed to update section '{heading}' "
-                    f"for page '{page_id}': {e}"
+                    f"Failed to update section '{heading}' for page '{page_id}': {e}"
                 )
             },
             indent=2,

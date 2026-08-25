@@ -1221,9 +1221,7 @@ class PagesMixin(ConfluenceClient):
             if v2_adapter:
                 page = v2_adapter.get_page(page_id=page_id, expand="version")
             else:
-                page = self.confluence.get_page_by_id(
-                    page_id=page_id, expand="version"
-                )
+                page = self.confluence.get_page_by_id(page_id=page_id, expand="version")
 
             if isinstance(page, str):
                 raise Exception(f"API returned error response: {page[:500]}")
@@ -1274,9 +1272,7 @@ class PagesMixin(ConfluenceClient):
             if isinstance(page, str):
                 raise Exception(f"API returned error response: {page[:500]}")
 
-            storage_xml = (
-                page.get("body", {}).get("storage", {}).get("value", "")
-            )
+            storage_xml = page.get("body", {}).get("storage", {}).get("value", "")
             version = page.get("version", {}).get("number", 0)
             title = page.get("title", "")
 
@@ -1341,9 +1337,7 @@ class PagesMixin(ConfluenceClient):
             if isinstance(page, str):
                 raise Exception(f"API returned error response: {page[:500]}")
 
-            storage_xml = (
-                page.get("body", {}).get("storage", {}).get("value", "")
-            )
+            storage_xml = page.get("body", {}).get("storage", {}).get("value", "")
             version = page.get("version", {}).get("number", 0)
             title = page.get("title", "")
             space_key = page.get("space", {}).get("key", "")
@@ -1357,9 +1351,7 @@ class PagesMixin(ConfluenceClient):
                     break
 
             if not target_tag:
-                raise ValueError(
-                    f"Heading '{heading}' not found in page '{title}'"
-                )
+                raise ValueError(f"Heading '{heading}' not found in page '{title}'")
 
             heading_level = int(target_tag.name[1])
             section_parts = [str(target_tag)]
@@ -1455,9 +1447,7 @@ class PagesMixin(ConfluenceClient):
             if isinstance(page, str):
                 raise Exception(f"API returned error response: {page[:500]}")
 
-            storage_xml = (
-                page.get("body", {}).get("storage", {}).get("value", "")
-            )
+            storage_xml = page.get("body", {}).get("storage", {}).get("value", "")
             title = page.get("title", "")
 
             soup = BeautifulSoup(storage_xml, "html.parser")
@@ -1469,9 +1459,7 @@ class PagesMixin(ConfluenceClient):
                     break
 
             if not target_tag:
-                raise ValueError(
-                    f"Heading '{heading}' not found in page '{title}'"
-                )
+                raise ValueError(f"Heading '{heading}' not found in page '{title}'")
 
             heading_level = int(target_tag.name[1])
 
